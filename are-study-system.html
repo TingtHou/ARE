@@ -383,12 +383,15 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 #authBody .learned{margin:0 0 12px}
 
 /* ---------- responsive: wide desktops ---------- */
-#main{width:100%;max-width:1440px;justify-self:center}
+#main{width:100%;max-width:1840px;justify-self:center}
+@media (min-width:1200px){
+  .panels{grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+  .panel.pwide{grid-column:span 2}  /* Weak spots: long objective titles need the room */
+}
 @media (min-width:1500px){
   #shell{grid-template-columns:248px minmax(0,1fr)}
-  #main{padding-inline:48px}
-  .panels{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
-  .fcwrap{max-width:860px}
+  #main{padding-inline:36px}
+  .fcwrap{max-width:900px}
 }
 
 /* ---------- responsive: phones and tablets ---------- */
@@ -505,7 +508,7 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
     <div class="divbars" id="tdQuizBars"></div>
     <div class="row"><button type="button" class="btn pri" id="tdTimed">Timed set of 10</button><button type="button" class="btn" id="tdMissed">Retry missed</button></div>
   </div>
-  <div class="panel">
+  <div class="panel pwide">
     <h3>Weak spots</h3>
     <div class="sub">Objectives where you have missed questions or rated cards Again or Shaky.</div>
     <ul class="weak" id="tdWeak"></ul>
