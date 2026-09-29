@@ -1,0 +1,550 @@
+<div class="eyebrow"><span class="pill ppd">PPD</span> 100 items · 4 hr 5 min · the lowest pass rate of the six divisions</div>
+<h1 class="t">Project Planning &amp; Design</h1>
+<p class="lede">Ordered by weight. Section 4 — Project Integration — is 32–38 items and cannot be memorised, so it is taught here as whole worked problems rather than as facts. Every formula arrives with numbers in it.</p>
+
+<h2 class="s">Section 4 · Project Integration of Program &amp; Systems <span class="pill">32–38%</span></h2>
+<p>This section asks one question in many costumes: <em>given all the constraints at once, which arrangement works?</em> The reliable way to answer is a fixed order of operations, because the constraints are not equally binding.</p>
+<div class="hook"><b>The order of operations for any integration item</b><strong>1. Code envelope</strong> (occupancy, construction type, allowable height and area) → <strong>2. Zoning envelope</strong> (take the lower of the two) → <strong>3. Structural grid</strong> (span the programme needs) → <strong>4. Floor-to-floor</strong> (structure + MEP + ceiling + clearance) → <strong>5. Core and egress</strong> (exits, distance, separation) → <strong>6. Programme fit</strong> → <strong>7. Cost.</strong> Anything that fails at step 1 or 2 is illegal, and no amount of elegance later rescues it. Items are built to tempt you into solving step 6 first.</div>
+
+<h3 class="s"><span class="obj">PPD 4.2</span>Floor-to-floor: the calculation the section is built on</h3>
+<p>If you learn one integration skill, learn this one. It connects structure, MEP, code and zoning in a single number, and it is the mechanism behind most "why doesn't this fit" items.</p>
+<div class="wx"><div class="hd">Worked example — building up a floor-to-floor dimension</div><div class="step">A 90,000 SF speculative office, 30 ft × 30 ft bays, VAV all-air system.
+
+Ceiling height required by the client                    9 ft 0 in
+Ceiling plenum:
+  Structural depth — composite steel beam at span/22
+     30 ft × 12 = 360 in; 360 ÷ 22 = 16.4 in  → use  W18   18 in
+  Metal deck + concrete topping                            5 in
+  Duct depth at the largest run (main trunk)              18 in
+  Duct-to-structure clearance / hangers                    4 in
+  Sprinkler main + branch below duct                       6 in
+  Light fixture depth + ceiling grid                       4 in
+                                       Plenum subtotal   55 in  = 4 ft 7 in
+
+FLOOR-TO-FLOOR = 9 ft 0 in + 4 ft 7 in                 = 13 ft 7 in
+                                                  round to 13 ft 8 in
+
+Now test it against zoning:
+  Height limit 120 ft.  120 ÷ 13.67 = 8.78 → 8 storeys.
+  8 × 11,250 SF/floor = 90,000 SF ✓ fits exactly.
+
+Now the tested move — the engineer needs a 24 in trunk, not 18 in:
+  Plenum becomes 61 in; floor-to-floor 14 ft 1 in
+  120 ÷ 14.08 = 8.52 → still 8 storeys. Survives.
+
+And again — the client wants 10 ft ceilings:
+  Floor-to-floor 15 ft 1 in;  120 ÷ 15.08 = 7.96 → 7 storeys.
+  7 × 11,250 = 78,750 SF. You have just lost 11,250 SF
+  of leasable area to one foot of ceiling height.</div></div>
+<div class="hook"><b>The three moves that buy back floor-to-floor</b><strong>1. Run ducts through the structure instead of under it</strong> — castellated or cellular beams, open-web joists, or beam penetrations. <strong>2. Use a flatter structure</strong> — post-tensioned flat plate at roughly span/45 instead of a beam-and-slab system. <strong>3. Move the ducts out of the ceiling</strong> — underfloor air, or a DOAS with local terminal units. Each is a genuine exam answer to "how do you get another storey inside the height limit."</div>
+
+<h3 class="s"><span class="obj">PPD 4.1</span>Building configuration: the trade-offs that decide massing</h3>
+<div class="tw"><table>
+<thead><tr><th>Move</th><th>Buys you</th><th>Costs you</th></tr></thead>
+<tbody>
+<tr><td>Compact, low surface-to-volume</td><td>Lower heating and cooling loads; less envelope to build and maintain</td><td>Less daylight and natural ventilation reach; deeper floor plate</td></tr>
+<tr><td>Long, thin, east–west axis</td><td>Daylight and cross-ventilation to every space; easy south shading</td><td>More envelope per SF; more circulation; higher skin load</td></tr>
+<tr><td>Taller and smaller footprint</td><td>Preserves site area, open space, parking</td><td>More core per floor, so net-to-gross falls; vertical transportation cost</td></tr>
+<tr><td>Lower and wider footprint</td><td>Better net-to-gross; cheaper structure; simpler egress</td><td>Consumes site; longer horizontal runs; more roof and foundation</td></tr>
+<tr><td>Atrium</td><td>Daylight to a deep plate; a social centre</td><td>Smoke control, rated construction, lost floor area, conditioning a tall volume</td></tr>
+<tr><td>Central core</td><td>Shortest average travel; efficient MEP risers; usable perimeter all round</td><td>Deep plan; harder to daylight the centre</td></tr>
+<tr><td>Offset / end core</td><td>Column-free open plate; core can be the fire-rated wall on a lot line</td><td>Longer egress travel; exit separation harder to satisfy</td></tr>
+</tbody></table></div>
+<div class="hook"><b>Skin-load vs internal-load dominated</b>From the Amber Book, and it is the most useful mental model in the division. A <strong>skin-load dominated</strong> building (small, residential, high surface-to-volume) is governed by what passes through the envelope — insulate, control glazing, orient. An <strong>internal-load dominated</strong> building (large, deep-plan, dense with people, lights and equipment) is governed by what happens inside, and may need cooling in winter. Ask which one the stem describes before choosing any envelope or systems answer; half the wrong options are right answers for the other kind of building.</div>
+
+<h2 class="s">Section 3 · Building Systems, Materials &amp; Assemblies <span class="pill">19–25%</span></h2>
+
+<h3 class="s"><span class="obj">PPD 3.2</span>Structural systems <span class="chip c-out">Entirely sourced from outside your folder</span></h3>
+<div class="rl"><div class="hd">Why this section exists</div>
+<p>I searched all 8.5 MB of MEEB 11th ed. for "span-to-depth," "waffle slab," "flat plate," "post-tensioned," "double-T," "tributary area" and "live load" and found <strong>three incidental hits</strong>, all in elevator sizing discussions. MEEB is a mechanical and electrical text and contains no structural systems content. Jenny's Building Systems notes contain no structural section at all. The Ballast structural chapters in your folder are image-only scans with no text layer. <strong>Objective 3.2 is 19–25% of PPD's section 3 and your folder does not cover it.</strong> Everything below is supplied and labelled with its source.</p></div>
+
+<h4 class="s">Depth-to-span, the numbers you size from</h4>
+<p>Full table on the <strong>Numbers</strong> page. The ones worth having by heart:</p>
+<div class="tw"><table>
+<thead><tr><th>System</th><th class="n">Depth</th><th class="n">Typical span</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Steel beam (rolled W)</td><td class="n">span/20 to span/28</td><td class="n">25–45 ft typical</td><td><span class="chip c-rot">Rule of thumb</span> AISC: ½ in of depth per ft of span</td></tr>
+<tr><td>Steel girder</td><td class="n">span/12 to span/15</td><td class="n">20–100 ft</td><td><span class="chip c-rot">Rule of thumb</span> Ruddy, ASCE 2004</td></tr>
+<tr><td>Open-web joist, K-series</td><td class="n">10–30 in deep</td><td class="n">to 60 ft</td><td><span class="chip c-ok">Verified</span> Steel Joist Institute</td></tr>
+<tr><td>Open-web joist, LH-series</td><td class="n">18–48 in deep</td><td class="n">to 96 ft</td><td><span class="chip c-ok">Verified</span> SJI</td></tr>
+<tr><td>Open-web joist, DLH-series</td><td class="n">52–120 in deep</td><td class="n">to 240 ft</td><td><span class="chip c-ok">Verified</span> SJI</td></tr>
+<tr><td>Steel truss (parallel chord)</td><td class="n">span/12</td><td class="n">40–300 ft</td><td><span class="chip c-rot">Rule of thumb</span></td></tr>
+<tr><td>One-way concrete slab</td><td class="n">l/20 simply supported; l/24 one end continuous; l/28 both ends continuous; l/10 cantilever</td><td class="n">10–20 ft</td><td><span class="chip c-ok">Verified</span> ACI 318 Table 7.3.1.1</td></tr>
+<tr><td>Two-way flat plate</td><td class="n">clear span/33 (fy = 60 ksi, interior panel); 5 in absolute minimum</td><td class="n">15–25 ft</td><td><span class="chip c-ok">Verified</span> ACI 318 Table 8.3.1.1</td></tr>
+<tr><td>Flat slab with drop panels</td><td class="n">4 in absolute minimum; thinner per span than flat plate</td><td class="n">20–30 ft</td><td><span class="chip c-ok">Verified</span> (minimum only)</td></tr>
+<tr><td>Post-tensioned slab</td><td class="n">≈ span/45</td><td class="n">30–50 ft</td><td><span class="chip c-un">Widely repeated in practice; I could not find PTI or ACI publishing it as a design rule.</span> Treat as indicative.</td></tr>
+<tr><td>Precast hollow-core plank</td><td class="n">≈ span/45 floors, span/50 roofs</td><td class="n">20–50 ft; 8 in→33 ft, 10 in→40 ft, 12 in→50 ft at 100 psf superimposed</td><td><span class="chip c-rot">Manufacturer-published</span></td></tr>
+<tr><td>Composite steel deck</td><td class="n">2 in deck spans 7–12 ft; 3 in deck spans 10–15 ft; total slab 4½–8¼ in</td><td class="n">deck between beams</td><td><span class="chip c-ok">Verified</span> ASC Steel Deck</td></tr>
+</tbody></table></div>
+<div class="rl"><div class="hd">Correction — one-way vs two-way slab, from your JX notes</div>
+<p>They state "One-way slab (&lt; 2.0) … Two-way slab (≥ 2.0)." <strong>The inequalities are swapped.</strong> A slab acts <strong>one-way when the long span ÷ short span is 2 or more</strong> (load takes the short route almost entirely) and <strong>two-way when that ratio is less than 2</strong>. Memorise it as: <em>a long skinny panel is one-way; a square-ish panel is two-way.</em></p>
+<p class="small">Honesty note: this is universal reinforced-concrete doctrine and appears in every textbook, but I was not able to pull a direct citation for the 2.0 ratio in this session. The direction of the inequality above is certainly right; if you want the citation, it is in ACI 318 commentary.</p></div>
+
+<h4 class="s">The four beam cases — the formulas the exam hands you on screen</h4>
+<p>NCARB provides structural formulas on screen during the test. Your job is knowing which one to reach for and keeping the units straight.</p>
+<div class="tw"><table>
+<thead><tr><th>Case</th><th class="n">Max moment</th><th class="n">Max shear</th><th class="n">Max deflection</th></tr></thead>
+<tbody>
+<tr><td>Simple beam, uniform load w</td><td class="n">wL²/8</td><td class="n">wL/2</td><td class="n">5wL⁴/384EI</td></tr>
+<tr><td>Simple beam, point load P at midspan</td><td class="n">PL/4</td><td class="n">P/2</td><td class="n">PL³/48EI</td></tr>
+<tr><td>Cantilever, uniform load w</td><td class="n">wL²/2</td><td class="n">wL</td><td class="n">wL⁴/8EI</td></tr>
+<tr><td>Cantilever, point load P at free end</td><td class="n">PL</td><td class="n">P</td><td class="n">PL³/3EI</td></tr>
+</tbody></table></div>
+<p class="small">Section properties: <strong>I = bh³/12</strong> for a rectangle; <strong>S = I/c</strong>, which for a rectangle is <strong>bh²/6</strong>; bending stress <strong>f<sub>b</sub> = M/S</strong>. <strong>Depth is cubed in I and squared in S</strong> — that is why depth beats width every time, and why the answer to "the beam deflects too much" is almost always "make it deeper," not "make it wider."</p>
+<div class="wx"><div class="hd">Worked example — sizing a steel beam from scratch</div><div class="step">Simply supported steel beam. Span L = 30 ft.
+Tributary width 10 ft. Floor live load 50 psf (office),
+superimposed dead load 30 psf.
+
+Step 1 — line load on the beam
+  Total load  = 50 + 30 = 80 psf
+  w           = 80 psf × 10 ft tributary = 800 lb/ft = 0.8 k/ft
+
+Step 2 — maximum moment
+  M = wL²/8 = 0.8 × 30² / 8 = 0.8 × 900 / 8 = 90 kip-ft
+  Convert:   90 × 12 = 1,080 kip-in
+
+Step 3 — required section modulus
+  Allowable bending stress, compact and braced ≈ 24 ksi
+  S required = M / Fb = 1,080 / 24 = 45 in³
+
+Step 4 — pick a section
+  Any W-shape with Sx ≥ 45 in³.  A W16×31 has Sx = 47.2 in³. ✓
+
+Step 5 — sanity-check against the rule of thumb
+  span/22 → 30 × 12 / 22 = 16.4 in.
+  A W16 is 16 in nominal. The rule of thumb and the
+  calculation agree — which is the point of the rule of thumb.
+
+Step 6 — deflection check
+  Floor member live-load limit is L/360 (IBC Table 1604.3)
+  Allowable = 30 × 12 / 360 = 1.0 in
+  Live-load w = 50 × 10 = 500 lb/ft = 0.0417 k/in; L = 360 in
+  Δ = 5wL⁴/384EI. With Ix = 375 in⁴ for W16×31, E = 29,000 ksi:
+  Δ = 5(0.0417)(360⁴) / (384 × 29,000 × 375) = 1.30 in
+  1.30 in > 1.0 in allowable → FAILS deflection.
+
+  Go one size up: W18×35, Ix = 510 in⁴
+  Δ = 5(0.0417)(360⁴) / (384 × 29,000 × 510) = 0.96 in ✓
+
+RESULT: strength said W16×31; deflection governed and
+gave W18×35. For floor beams, deflection governs far more
+often than stress — that is the lesson, and it is examinable.</div></div>
+<div class="hook"><b>Deflection limits, IBC Table 1604.3 <span class="chip c-ok">Verified</span></b><strong>Floor members: L/360 live, L/240 total.</strong> Roof supporting plaster ceiling: L/360. Roof supporting non-plaster ceiling: L/240. Roof with no ceiling: L/180. Exterior walls with brittle finish: L/240; with flexible finish: L/120. <strong>For a cantilever, L is twice the cantilever length.</strong></div>
+
+<h4 class="s">Lateral systems — what each costs the plan</h4>
+<div class="tw"><table>
+<thead><tr><th>System</th><th>Stiffness &amp; cost</th><th>What it does to your plan</th></tr></thead>
+<tbody>
+<tr><td><strong>Shear wall</strong></td><td>Stiffest, cheapest</td><td>Needs continuous full-height wall lines. Fights open plans. Usually lands in the core.</td></tr>
+<tr><td><strong>Concentric braced frame</strong></td><td>Very stiff, economical</td><td>Diagonals block openings and circulation; visible on the façade.</td></tr>
+<tr><td><strong>Eccentric braced frame</strong></td><td>Stiff and ductile; more expensive</td><td>The offset "link beam" yields in a large earthquake. Better seismic performance, some planning freedom back.</td></tr>
+<tr><td><strong>Moment frame</strong></td><td>Least stiff, most expensive per unit of stiffness</td><td>Most architecturally free — no walls, no diagonals, open corners and façades.</td></tr>
+</tbody></table></div>
+<p><strong>Diaphragms.</strong> A diaphragm is <strong>flexible</strong> when its maximum deflection exceeds <strong>twice</strong> the average story drift of the shear walls it connects, and <strong>rigid</strong> when it does not. <span class="chip c-ok">Verified</span> The consequence is how load is distributed: a <strong>flexible diaphragm distributes by tributary area</strong>; a <strong>rigid diaphragm distributes by relative stiffness</strong> and also picks up torsion. Wood and untopped steel deck tend to be flexible; concrete tends to be rigid.</p>
+<p><strong>Seismic base shear</strong> is <strong>V = C<sub>s</sub>W</strong> — a coefficient times the effective seismic weight. The <strong>R factor</strong> rewards ductility: a higher R (special moment frame) reduces design base shear relative to a low-R brittle system. Heavier building means more seismic force, which is why concrete attracts more seismic load than steel of the same size.</p>
+<div class="hook"><b>Plan and vertical irregularities you can see <span class="chip c-ok">Verified, ASCE 7-16</span></b><strong>Horizontal:</strong> torsional irregularity (drift at one end &gt; 1.2× the average; extreme &gt; 1.4×), re-entrant corner (both projections beyond the corner exceed 15% of the plan dimension), diaphragm discontinuity (opening &gt; 50% of the diaphragm area), out-of-plane offset, non-parallel systems. <strong>Vertical:</strong> soft storey (stiffness &lt; 70% of the storey above; extreme &lt; 60%), mass irregularity (&gt; 150% of an adjacent storey), geometric irregularity (system dimension &gt; 130% of an adjacent storey), in-plane discontinuity, weak storey (strength &lt; 80% of the storey above; extreme &lt; 65%). <strong>A re-entrant corner and a soft storey are both things you can spot in a drawing</strong> — which is exactly why they appear in hotspot items.</div>
+<p><strong>Wind.</strong> <strong>MWFRS</strong> (main wind force resisting system) is the whole structure carrying wind to the foundation; <strong>components and cladding</strong> are individual elements designed for higher, localised peak pressures — which is why a curtain wall panel is designed for more pressure per SF than the frame behind it. <strong>Exposure B</strong> urban/suburban/wooded (lowest pressures), <strong>C</strong> open terrain (the default), <strong>D</strong> flat unobstructed and water (highest). <strong>Risk Category I</strong> low hazard, <strong>II</strong> standard, <strong>III</strong> substantial hazard (schools, assembly 300+), <strong>IV</strong> essential facilities that must stay operational. <span class="chip c-ok">Verified</span></p>
+
+<h3 class="s"><span class="obj">PPD 3.1</span>Thermal and envelope — the calculations</h3>
+<div class="tw"><table>
+<thead><tr><th>Quantity</th><th class="n">Definition</th><th>Units</th></tr></thead>
+<tbody>
+<tr><td>Conductivity <em>k</em></td><td class="n">heat flow per inch of a homogeneous material</td><td>Btu·in / h·ft²·°F</td></tr>
+<tr><td>Resistivity <em>r</em></td><td class="n">r = 1/k — resistance per inch</td><td>—</td></tr>
+<tr><td>Conductance <em>C</em></td><td class="n">C = k / thickness — for a specific thickness</td><td>Btu / h·ft²·°F</td></tr>
+<tr><td>Resistance <em>R</em></td><td class="n">R = 1/C, or r × thickness</td><td>h·ft²·°F / Btu</td></tr>
+<tr><td>Transmittance <em>U</em></td><td class="n">U = 1 / R<sub>total</sub></td><td>Btu / h·ft²·°F</td></tr>
+</tbody></table></div>
+<div class="trap"><div class="hd">R-values add. U-values do not.</div><p>Add the R of every layer including both air films, then invert once at the end. <strong>Never average U-values across different assemblies by simple arithmetic</strong> — weight them by area. This is the single most common envelope-calculation error.</p></div>
+<div class="wx"><div class="hd">Worked example — U-factor, heat loss, and where the dew point lands</div><div class="step">Wall assembly, outside to inside:
+  Outside air film                                 R 0.17
+  Brick veneer, 4 in                               R 0.44
+  Air space, 1 in                                  R 1.00
+  Rigid insulation, 2 in @ R-5/in                  R 10.00
+  CMU, 8 in                                        R 1.11
+  Gypsum board, 5/8 in                             R 0.56
+  Inside air film                                  R 0.68
+                                     R total    =  R 13.96
+
+U = 1 / 13.96 = 0.0716 Btu/h·ft²·°F
+
+HEAT LOSS through 4,000 SF of this wall
+Indoor 70°F, outdoor design 10°F → ΔT = 60°F
+  Q = U × A × ΔT
+    = 0.0716 × 4,000 × 60
+    = 17,184 Btu/h
+
+WHERE DOES THE DEW POINT LAND?
+Temperature drop across each layer is proportional to its
+share of R total. Total drop = 60°F, so each R unit = 60/13.96
+= 4.30 °F per unit of R.
+
+  Interface                      R accumulated   Temp
+  Inside surface of gypsum            0.68       70 − 2.9  = 67.1°F
+  Gypsum / CMU                        1.24       70 − 5.3  = 64.7°F
+  CMU / insulation                    2.35       70 − 10.1 = 59.9°F
+  Insulation / air space             12.35       70 − 53.1 = 16.9°F
+  Air space / brick                  13.35       70 − 57.4 = 12.6°F
+
+Indoor air at 70°F and 35% RH has a dew point of about 41°F.
+The first interface colder than 41°F is the OUTBOARD face of
+the insulation (16.9°F). Everything inboard of the insulation
+stays well above dew point.
+
+CONCLUSION: with continuous exterior insulation, the vapour
+control layer belongs on the WARM (inboard) side of the
+insulation, and the assembly is safe. Move that insulation
+into the cavity behind the CMU and the CMU itself drops
+below dew point — which is why exterior continuous
+insulation is the durable detail.</div></div>
+<div class="hook"><b>Vapour control by climate — and MEEB's caution</b><strong>Heating-dominated (cold) climates: vapour retarder on the interior, warm side.</strong> <strong>Hot-humid climates: the vapour drive reverses, so the retarder goes toward the exterior — and an interior polyethylene sheet becomes a moisture trap.</strong> MEEB frames this as placement relative to the dominant vapour drive, not a fixed rule. <strong>Never put two vapour-impermeable layers in one assembly</strong> — water that gets between them cannot leave in either direction. Your Panic Notes get the climate pairing right: hot-humid → outside; cold → inside.</div>
+
+<h4 class="s">Loads, degree days and the balance point</h4>
+<div class="tw"><table>
+<thead><tr><th>Formula</th><th>What it gives you</th></tr></thead>
+<tbody>
+<tr><td class="n">Q = U × A × ΔT</td><td>Conductive heat flow through an assembly, Btu/h</td></tr>
+<tr><td class="n">Q = 1.1 × cfm × ΔT</td><td><strong>Sensible</strong> heat carried by moving air, Btu/h</td></tr>
+<tr><td class="n">Q = 0.68 × cfm × Δgrains</td><td><strong>Latent</strong> heat carried by moving air, Btu/h</td></tr>
+<tr><td class="n">Q = 4.5 × cfm × Δh</td><td><strong>Total</strong> heat, using enthalpy difference in Btu/lb</td></tr>
+<tr><td class="n">cfm = volume × ACH ÷ 60</td><td>Airflow from an air-change rate</td></tr>
+<tr><td class="n">HDD₆₅ = Σ(65 − mean daily temp)</td><td>Heating degree days, summed over days below 65°F</td></tr>
+<tr><td class="n">CDD₆₅ = Σ(mean daily temp − 65)</td><td>Cooling degree days</td></tr>
+<tr><td class="n">Balance point = T<sub>indoor</sub> − (internal gains ÷ UA)</td><td>The outdoor temperature at which the building needs neither heating nor cooling</td></tr>
+</tbody></table></div>
+<div class="wx"><div class="hd">Worked example — ventilation load and duct sizing consequence</div><div class="step">A 3,000 SF open office. ASHRAE 62.1 ventilation for an office
+space is Rp = 5 cfm/person plus Ra = 0.06 cfm/ft², at a default
+occupant density of 5 people per 1,000 ft².
+
+Step 1 — occupancy
+  3,000 ÷ 1,000 × 5 = 15 people
+
+Step 2 — breathing-zone outdoor air
+  Vbz = (Rp × people) + (Ra × area)
+      = (5 × 15) + (0.06 × 3,000)
+      = 75 + 180 = 255 cfm outdoor air
+
+Step 3 — sensible cooling airflow for the same space
+  Space sensible load, say 60,000 Btu/h.
+  Supply air at 55°F into a 75°F room → ΔT = 20°F
+  Q = 1.1 × cfm × ΔT  →  cfm = Q ÷ (1.1 × ΔT)
+      = 60,000 ÷ (1.1 × 20) = 2,727 cfm
+
+Step 4 — the point
+  Outdoor air is 255 of 2,727 cfm — about 9%.
+  The duct is sized by the COOLING airflow, not ventilation.
+
+Step 5 — why cooling, not heating, sets duct size
+  Heating: supply 130°F into 70°F room, ΔT = 60°F
+           cfm = 60,000 ÷ (1.1 × 60) = 909 cfm
+  Cooling ΔT (20°F) is a third of heating ΔT (60°F),
+  so cooling needs three times the air.
+  DUCTS ARE ALWAYS SIZED FOR COOLING.</div></div>
+<p class="small">Useful constants: <strong>1 ton of cooling = 12,000 Btu/h</strong>; <strong>1 horsepower = 2,544 Btu/h</strong>; <strong>1 boiler horsepower = 33,475 Btu/h</strong>; <strong>1 kWh = 3,413 Btu</strong>. <span class="chip c-ok">Verified</span></p>
+
+<h3 class="s"><span class="obj">PPD 3.1</span>HVAC system selection</h3>
+<div class="tw"><table>
+<thead><tr><th>Family</th><th>Examples</th><th>Choose it when</th><th>Space it needs</th></tr></thead>
+<tbody>
+<tr><td><strong>All-air</strong></td><td>Single-zone AHU, multizone, dual duct, VAV, CAV</td><td>Large buildings, good filtration and economiser potential, precise control</td><td>Most — big ducts, deep plenums, large mechanical rooms</td></tr>
+<tr><td><strong>Air–water</strong></td><td>Fan-coil with ducted primary air, induction units, active chilled beams</td><td>Perimeter-dominated buildings where full ducted air would be wasteful</td><td>Less duct, but pipes and local units everywhere</td></tr>
+<tr><td><strong>All-water</strong></td><td>Hydronic radiators and convectors, radiant panels and slabs, passive chilled beams</td><td>Heating-dominated buildings, high thermal comfort, minimal duct depth</td><td>Least duct — but needs separate ventilation air</td></tr>
+<tr><td><strong>Direct refrigerant</strong></td><td>PTAC, split, mini-split, VRF, packaged rooftop</td><td>Small buildings, zoned control, phased fit-out, no central plant</td><td>Least central space; refrigerant lines and outdoor units</td></tr>
+</tbody></table></div>
+<div class="out"><div class="hd">Systems MEEB 11th edition does not contain at all <span class="chip c-out">Supplied from outside</span></div>
+<ul>
+<li><strong>DOAS (dedicated outdoor air system).</strong> One system delivers 100% outdoor air, usually with energy recovery, and a separate system handles sensible load. It <strong>decouples latent from sensible control</strong>, so each can be optimised. It is the standard partner for radiant slabs, chilled beams, VRF and water-source heat pumps — none of which handle ventilation well alone. <span class="chip c-ok">Verified conceptually</span> <span class="chip c-un">I could not confirm a specific plenum-depth saving figure; do not memorise one.</span></li>
+<li><strong>Chilled beams.</strong> <strong>Passive</strong> beams rely on natural convection only. <strong>Active</strong> beams entrain room air with an integral primary-air nozzle, so they move more heat in the same size. Both need a DOAS for ventilation and both demand tight dew-point control, because a chilled beam that sweats drips on the occupants.</li>
+<li><strong>VRF</strong> — variable refrigerant flow. A distributed heat-pump system with individual zone control and simultaneous heating and cooling in different zones.</li>
+<li><strong>Radiant slab</strong> — hydronic tubing in the floor. Handles sensible load with high comfort and no ducts; slow to respond; needs separate ventilation and dehumidification.</li>
+<li><strong>Displacement ventilation</strong> — supplies cool air low and slow; buoyancy carries heat and contaminants up and out above the occupied zone. Needs higher ceilings and cannot handle a high sensible load alone.</li>
+<li><strong>ERV vs HRV</strong> — an <strong>HRV transfers sensible heat only</strong>; an <strong>ERV transfers sensible and latent</strong> (heat and moisture). ERV in humid climates, HRV where you do not want to move moisture.</li>
+</ul></div>
+<p class="small">MEEB's own: the <strong>heat pipe</strong> is a passive, no-moving-parts sensible exchanger between adjacent supply and exhaust streams. A <strong>runaround coil</strong> loop carries glycol between two coils when the streams are not adjacent. An <strong>economiser</strong> uses outdoor air (or water) directly for cooling when conditions allow. <strong>Parallel-blade dampers for on/off; opposed-blade dampers for throttling.</strong> Condenser water flow is roughly <strong>3 gpm per ton</strong>.</p>
+<div class="hook"><b>ASHRAE standards — the three-number set</b><strong>90.1 — energy</strong> (envelope, HVAC, lighting, service water heating). <strong>62.1 — ventilation and indoor air quality.</strong> <strong>55 — thermal comfort.</strong> Current editions: 90.1-2022 and 62.1-2022. <span class="chip c-ok">Verified</span> Your Panic Notes get all three right.</div>
+
+<h3 class="s"><span class="obj">PPD 3.3</span>Lighting, acoustics and the special systems</h3>
+<h4 class="s">Lighting — the lumen method</h4>
+<div class="wx"><div class="hd">Worked example — how many fixtures in a classroom</div><div class="step">Classroom 30 ft × 24 ft = 720 SF.
+Target illuminance 50 fc (MEEB Category E).
+Fixture: 2 lamps, 3,200 lumens each.
+CU = 0.62 · LLF = 0.75
+
+Lumen method:
+  N × lamps × lumens × CU × LLF = footcandles × area
+
+  N = (fc × area) / (lamps × lumens × CU × LLF)
+    = (50 × 720) / (2 × 3,200 × 0.62 × 0.75)
+    = 36,000 / 2,976
+    = 12.1  →  use 12 fixtures (a 3 × 4 grid suits the room)
+
+Check the delivered level with 12:
+  (12 × 2 × 3,200 × 0.62 × 0.75) / 720 = 49.6 fc ✓
+
+LLF decomposes into lamp lumen depreciation, luminaire dirt
+depreciation, room surface dirt depreciation and ballast factor.
+CU comes from the manufacturer's photometrics, entered with
+the room cavity ratio and the effective cavity reflectances.</div></div>
+<p class="small"><strong>MEEB's illuminance categories</strong> <span class="chip c-ok">Verified, Table 11.7</span>: A public spaces <strong>3 fc</strong>; B simple orientation <strong>5 fc</strong>; C working spaces, simple tasks <strong>10 fc</strong>; D high-contrast or large tasks <strong>30 fc</strong>; E high-contrast small or low-contrast large <strong>50 fc</strong>; F low-contrast small <strong>100 fc</strong>; G near-threshold special tasks <strong>300–1,000 fc</strong>.</p>
+<div class="rl"><div class="hd">Correction — Jenny's footcandle table contradicts itself</div><p>It lists "office occasional tasks 15 fc" and "general office work 50 fc" as separate rows, which reads as two different values for the same task. Neither 15 nor 50 maps cleanly onto MEEB's own categories. <strong>Use MEEB's A–G ladder</strong>, which is what the exam's numbers descend from, and note MEEB's own statement that task-specific tables live in the IESNA Lighting Handbook and are not reproduced.</p></div>
+<p><strong>Point method:</strong> illuminance at a point is <strong>E = I / d²</strong>, with a cosine correction for angle. Horizontal illuminance on a desk not directly under the fixture is <strong>I × cos θ / d²</strong>; vertical is <strong>I × sin θ / d²</strong>. Your Panic Notes state both correctly.</p>
+<p><strong>Daylight factor</strong> = interior illuminance ÷ unobstructed exterior horizontal illuminance × 100%. It resolves into <strong>Sky Component + Externally Reflected Component + Internally Reflected Component</strong>. MEEB's caution is examinable: <strong>daylight factor is valid only for overcast or defined CIE skies</strong>, not partly cloudy or direct sun, because the ratio is not constant then.</p>
+<div class="hook"><b>CRI and colour temperature — the counterintuitive pair</b><strong>CRI</strong> is how faithfully colours render, on a 0–100 scale against a reference at the same colour temperature. <strong>CCT</strong> is how the lamp <em>looks</em>, in kelvin — and it runs backwards from intuition: <strong>low K reads warm (2,700 K, orange), high K reads cool (5,000 K, blue).</strong> The reason is the blackbody curve — heat metal and it glows red, then yellow, then blue-white. Incandescent CRI = 100 by definition. High-pressure sodium is efficient and renders colour terribly (CRI ≈ 21 standard).</div>
+
+<h4 class="s">Acoustics</h4>
+<div class="tw"><table>
+<thead><tr><th>Metric</th><th>Measures</th><th>Applied to</th></tr></thead>
+<tbody>
+<tr><td><strong>NRC</strong></td><td>Absorption, 0 to 1 — average of the 250/500/1000/2000 Hz coefficients</td><td>A material's surface</td></tr>
+<tr><td><strong>STC</strong></td><td>Airborne sound transmission loss, single number</td><td>A partition assembly</td></tr>
+<tr><td><strong>IIC</strong></td><td>Impact (footfall) noise</td><td>A floor-ceiling assembly</td></tr>
+<tr><td><strong>NC / RC</strong></td><td>Background mechanical noise across octave bands</td><td>A room</td></tr>
+<tr><td><strong>RT</strong></td><td>Time for sound to decay 60 dB</td><td>A room volume</td></tr>
+</tbody></table></div>
+<p><strong>Sabine:</strong> RT = 0.05 × V ÷ A (imperial), where V is room volume in cubic feet and A is total absorption in sabins (surface area × absorption coefficient, summed).</p>
+<div class="wx"><div class="hd">Worked example — reverberation time and how to fix it</div><div class="step">Lecture room 40 ft × 30 ft × 12 ft = 14,400 cubic ft.
+
+Surfaces and absorption:
+  Ceiling  40×30 = 1,200 SF, gypsum       α 0.05 →  60 sabins
+  Floor    40×30 = 1,200 SF, vinyl        α 0.03 →  36 sabins
+  Walls   (40+30)×2×12 = 1,680 SF, gyp    α 0.05 →  84 sabins
+  Occupants, 60 people                    ≈4.0 ea → 240 sabins
+                                     Total A   =  420 sabins
+
+RT = 0.05 × 14,400 / 420 = 1.71 seconds
+
+Recommended for speech: roughly 0.6–1.0 s. 1.71 s is far too
+live — speech will smear.
+
+FIX — replace the gypsum ceiling with acoustic tile, α 0.70:
+  New ceiling absorption = 1,200 × 0.70 = 840 sabins
+  New total A = 840 + 36 + 84 + 240 = 1,200 sabins
+  RT = 0.05 × 14,400 / 1,200 = 0.60 s ✓
+
+Note what did the work: the ceiling is the largest single
+surface and had the most room to improve. Treating the floor
+(36 → maybe 120 sabins with carpet) would have moved RT only
+to 1.44 s. TREAT THE BIGGEST SURFACE FIRST.</div></div>
+<div class="trap"><div class="hd">The composite STC trap — Amber Book's best acoustics example</div><p>A wall rated STC 45 with windows at STC 26 covering 30% of its area has a <strong>composite STC of 31</strong> — six points above the window, fourteen below the wall. <strong>An assembly performs at its weakest path, not its average.</strong> The analogy that makes it stick: keeping sound out is like keeping water out — the leak decides, not the roof. Any item that upgrades the wall while leaving the door undercut is a wrong answer.</p></div>
+<p class="small">Perception: <strong>3 dB is barely perceptible, 6 dB is clearly noticeable, 10 dB reads as twice as loud.</strong> <span class="chip c-ok">Confirmed in both MEEB and Jenny's notes</span> Massive, airtight, structurally discontinuous assemblies stop airborne sound; structurally discontinuous and resilient floor assemblies stop impact noise. Low-frequency sound passes through walls more easily, bends around corners, builds in room corners, and needs thicker absorbers — or absorbers mounted over an air space.</p>
+<div class="rl"><div class="hd">Unresolved contradiction in your sources — sound velocity</div><p>Jenny's notes give air 1,130 ft/s, water 4,500 ft/s, wood 11,700 ft/s, steel 18,000 ft/s. The PPD quiz file in your folder gives different values for the same materials, and MEEB has no equivalent table to arbitrate. <strong>I could not resolve this and am not stating a number.</strong> Sound velocity by material is not a common ARE item; if you want it, check a physics reference rather than either of these files.</p></div>
+
+<h4 class="s">Conveying, fire suppression, and the rest of the "special systems" list</h4>
+<p>Objective 3.3 names six: <strong>acoustics, communications, lighting, security, conveying, fire suppression.</strong> Expect check-all-that-apply items built on that list.</p>
+<ul>
+<li><strong>Elevators.</strong> <strong>Hydraulic</strong> — a piston, usually in a drilled hole; cheap, slow, limited to roughly 5–6 storeys, no penthouse machine room but a pit and a machine room at the base. <strong>Traction</strong> — ropes over a driven sheave with counterweights; fast, efficient, any height. <strong>MRL (machine-room-less)</strong> traction puts the machine in the hoistway. Sizing is by handling capacity in a five-minute peak and by interval; a rule of thumb is one elevator per 45,000–50,000 SF of office, but treat that as indicative.</li>
+<li><strong>Escalators</strong> — typically 30° incline, 32 or 48 in nominal width, and they occupy a great deal of floor area for the vertical rise they achieve. They are <strong>not</strong> a means of egress.</li>
+<li><strong>Fire suppression</strong> — wet pipe (default, fastest), dry pipe (unheated spaces), pre-action (double-interlock for data centres and archives, to prevent accidental discharge), deluge (open heads, high-hazard), and clean agent or water mist where water damage is unacceptable.</li>
+<li><strong>Standpipes</strong> — <strong>Class I</strong> 2½ in connections for the fire department, <strong>Class II</strong> 1½ in for occupant use, <strong>Class III</strong> both. <span class="chip c-ok">Verified</span></li>
+<li><strong>Security</strong> — access control, intrusion detection, video surveillance, and the distinction between a credential reader (proximity card, MIFARE) and a biometric.</li>
+<li><strong>Communications</strong> — structured cabling, telecom rooms and their stacking, distribution frames, wireless coverage, and the space these actually need on each floor.</li>
+</ul>
+
+<h2 class="s">Section 2 · Codes &amp; Regulations <span class="pill">16–22%</span></h2>
+<p>PPD <em>applies</em> the code. These are the calculations. All values are 2021 IBC unless noted.</p>
+
+<h3 class="s"><span class="obj">PPD 2.2</span>Occupant load — where every egress calculation starts</h3>
+<p>Full Table 1004.5 is on the Numbers page. The ones that carry most items:</p>
+<div class="tw"><table>
+<thead><tr><th>Function</th><th class="n">SF per occupant</th><th>Gross/Net</th></tr></thead>
+<tbody>
+<tr><td>Assembly, concentrated (chairs only, not fixed)</td><td class="n">7</td><td>Net</td></tr>
+<tr><td>Assembly, standing space</td><td class="n">5</td><td>Net</td></tr>
+<tr><td>Assembly, unconcentrated (tables and chairs)</td><td class="n">15</td><td>Net</td></tr>
+<tr><td><strong>Business areas</strong></td><td class="n">150</td><td>Gross</td></tr>
+<tr><td>Educational, classroom</td><td class="n">20</td><td>Net</td></tr>
+<tr><td>Educational, shops and vocational rooms</td><td class="n">50</td><td>Net</td></tr>
+<tr><td>Mercantile</td><td class="n">60</td><td>Gross</td></tr>
+<tr><td>Residential</td><td class="n">200</td><td>Gross</td></tr>
+<tr><td>Institutional, sleeping areas</td><td class="n">120</td><td>Gross</td></tr>
+<tr><td>Kitchens, commercial</td><td class="n">200</td><td>Gross</td></tr>
+<tr><td>Warehouses</td><td class="n">500</td><td>Gross</td></tr>
+<tr><td>Accessory storage, mechanical equipment room</td><td class="n">300</td><td>Gross</td></tr>
+<tr><td>Parking garages</td><td class="n">200</td><td>Gross</td></tr>
+</tbody></table></div>
+<div class="rl"><div class="hd">Edition change that will catch you — business areas</div>
+<p><strong>The 2018 IBC used 100 SF gross for business areas. The 2021 IBC uses 150 SF gross.</strong> <span class="chip c-ok">Verified against Washington's adopted 2021 text and the Seattle Building Code</span> Every older study guide, including everything in your folder, says 100. On a 30,000 SF office floor that is the difference between 300 occupants and 200 — which changes exit count, egress width and whether you cross the 500-occupant threshold for a third exit. <strong>Know which edition the item is written to; if it does not say, 150 is the current number.</strong></p></div>
+<div class="wx"><div class="hd">Worked example — occupant load through to egress width and exit count</div><div class="step">A 5-storey office, 22,000 SF per floor, sprinklered throughout
+with an emergency voice/alarm communication system.
+
+Step 1 — occupant load per floor
+  Business, 150 SF gross:  22,000 ÷ 150 = 146.67 → 147 occupants
+  (always round UP for occupant load)
+
+Step 2 — number of exits required, Table 1006.3.3
+  1–500 occupants per storey → 2 exits. 147 → TWO exits.
+
+Step 3 — egress width, sprinklered with voice/alarm
+  Stairways:            0.2 in per occupant  (not 0.3)
+  Other components:     0.15 in per occupant (not 0.2)
+
+  Stair width required = 147 × 0.2 = 29.4 in
+  BUT the minimum stair width is 44 in where occupant load
+  is 50 or more. 44 in governs. → 44 in stairs.
+
+  Corridor width = 147 × 0.15 = 22.1 in
+  BUT the minimum corridor width is 44 in. → 44 in corridor.
+
+Step 4 — the point
+  At this occupant load the CODE MINIMUMS govern, not the
+  capacity calculation. Capacity only takes over when
+  occupant load × factor exceeds the minimum:
+     stairs:   44 ÷ 0.2  = 220 occupants
+     corridor: 44 ÷ 0.15 = 293 occupants
+  Below those numbers, answer 44 in.
+
+Step 5 — now make it an assembly floor instead
+  22,000 SF of unconcentrated assembly at 15 SF net:
+     22,000 ÷ 15 = 1,467 occupants
+  Exits required: more than 1,000 → FOUR exits.
+  Stair width = 1,467 × 0.2 = 293.4 in total, distributed
+  across those stairs, and no one exit may carry so much
+  that losing it drops available capacity below 50%.</div></div>
+<div class="hook"><b>The egress-capacity factors, and the condition that halves them</b><strong>Stairways 0.3 in/occupant; all other egress components 0.2 in/occupant.</strong> Reduced to <strong>0.2 and 0.15</strong> where the building is sprinklered <em>and</em> has an emergency voice/alarm communication system, and is not Group H or I-2. <span class="chip c-ok">Verified</span> <strong>Both conditions are required.</strong> Sprinklers alone do not buy the reduction — that is the trap, and your Panic Notes omit the reduced factors entirely.</div>
+
+<h3 class="s"><span class="obj">PPD 2.2</span>Exits: how many, how far apart, how far away</h3>
+<div class="tw"><table>
+<caption>Minimum number of exits per storey — Table 1006.3.3 <span class="chip c-ok">Verified</span></caption>
+<thead><tr><th class="n">Occupant load per storey</th><th class="n">Minimum exits</th></tr></thead>
+<tbody>
+<tr><td class="n">1–500</td><td class="n">2</td></tr>
+<tr><td class="n">501–1,000</td><td class="n">3</td></tr>
+<tr><td class="n">More than 1,000</td><td class="n">4</td></tr>
+</tbody></table></div>
+<p><strong>Exit separation, §1007.1.1:</strong> two required exits must be placed <strong>not less than one-half of the maximum overall diagonal dimension</strong> of the building or area served, measured in a straight line between them — <strong>reduced to one-third where the building is sprinklered</strong> throughout. Where three or more exits are required, at least two must meet that rule and the rest must be a reasonable distance apart. <span class="chip c-ok">Verified</span></p>
+<div class="wx"><div class="hd">Worked example — exit separation on a rectangular floor</div><div class="step">Floor plate 200 ft × 120 ft, sprinklered.
+
+Diagonal = √(200² + 120²) = √(40,000 + 14,400)
+         = √54,400 = 233.2 ft
+
+Unsprinklered rule:  1/2 × 233.2 = 116.6 ft minimum separation
+Sprinklered rule:    1/3 × 233.2 =  77.7 ft minimum separation
+
+If the two stairs are 85 ft apart:
+  sprinklered → 85 > 77.7 ✓ complies
+  unsprinklered → 85 < 116.6 ✗ does not comply
+
+This is exactly how the item is written: same plan, one word
+changed in the stem, opposite answer.</div></div>
+<p><strong>Travel distance, Table 1017.2</strong> <span class="chip c-ok">Verified</span> — unsprinklered / sprinklered:</p>
+<div class="tw"><table>
+<thead><tr><th>Occupancy</th><th class="n">Without sprinkler</th><th class="n">With sprinkler</th></tr></thead>
+<tbody>
+<tr><td>A, E, F-1, M, R, S-1</td><td class="n">200 ft</td><td class="n">250 ft</td></tr>
+<tr><td>B</td><td class="n">200 ft</td><td class="n">300 ft</td></tr>
+<tr><td>F-2, S-2, U</td><td class="n">300 ft</td><td class="n">400 ft</td></tr>
+<tr><td>I-1</td><td class="n">Not permitted</td><td class="n">250 ft</td></tr>
+<tr><td>I-2, I-3</td><td class="n">Not permitted</td><td class="n">200 ft</td></tr>
+<tr><td>I-4</td><td class="n">150 ft</td><td class="n">200 ft</td></tr>
+<tr><td>H-1 / H-2 / H-3 / H-4 / H-5</td><td class="n">Not permitted</td><td class="n">75 / 100 / 150 / 175 / 200 ft</td></tr>
+</tbody></table></div>
+<div class="hook"><b>Three distances people confuse</b><strong>Common path of egress travel</strong> — the portion you must walk before you have a choice of two directions. <strong>Dead-end corridor</strong> — a corridor pocket with no exit at the end: limit <strong>20 ft</strong>, extended to <strong>50 ft</strong> in sprinklered Groups B, E, F, I-1, M, R-1, R-2, S and U. <strong>Exit access travel distance</strong> — the whole walk to an exit, per the table above. They are measured differently and limited separately, and an item will give you all three numbers to see which you reach for.</div>
+<p class="small"><strong>Corridor width</strong>: 44 in general; <strong>36 in</strong> where the occupant load served is fewer than 50, and within dwelling units; <strong>72 in</strong> for Group E corridors serving 100 or more; <strong>96 in</strong> in Group I-2 where required for bed movement. <span class="chip c-rot">Verified only against 2024 text; values believed unchanged from 2021</span></p>
+
+<h3 class="s"><span class="obj">PPD 2.2</span>Construction type, height and area</h3>
+<p><strong>Five types.</strong> <strong>Types I and II</strong> — building elements in Table 601 are noncombustible. <strong>Type III</strong> — exterior walls noncombustible, interior elements any permitted material (the classic brick-and-joist building). <strong>Type IV</strong> — mass timber or noncombustible; in the 2021 IBC this subdivides into <strong>IV-A, IV-B, IV-C</strong> plus <strong>IV-HT</strong> (heavy timber). <strong>Type V</strong> — anything permitted. The <strong>A/B suffix</strong> distinguishes protected (higher rating) from unprotected.</p>
+<div class="out"><div class="hd">Mass timber in the 2021 IBC — new and testable</div>
+<ul>
+<li><strong>Type IV-A</strong> — up to <strong>18 storeys</strong>; mass timber fully protected by noncombustible material; <strong>3-hour</strong> primary structural frame.</li>
+<li><strong>Type IV-B</strong> — up to <strong>12 storeys</strong>; limited exposed mass timber permitted; <strong>2-hour</strong> frame.</li>
+<li><strong>Type IV-C</strong> — up to <strong>9 storeys</strong>; exposed mass timber permitted; <strong>2-hour</strong> frame.</li>
+</ul>
+<p class="small"><span class="chip c-rot">Partially verified</span> — confirmed via a trade publication summarising the 2021 IBC, not against the code text itself. The pattern (more protection buys more height) is reliable; check the storey numbers against the code before relying on them in an answer.</p></div>
+<div class="tw"><table>
+<caption>Table 601 — fire-resistance rating of building elements, hours <span class="chip c-rot">Partially verified: confirmed for Types I, II, III, IV-HT and V from two independent reproductions. The IV-A/B/C columns could not be pulled from code text; they are governed by §602.4.1–.3.</span></caption>
+<thead><tr><th>Element</th><th class="n">I-A</th><th class="n">I-B</th><th class="n">II-A</th><th class="n">II-B</th><th class="n">III-A</th><th class="n">III-B</th><th class="n">IV-HT</th><th class="n">V-A</th><th class="n">V-B</th></tr></thead>
+<tbody>
+<tr><td>Primary structural frame</td><td class="n">3</td><td class="n">2</td><td class="n">1</td><td class="n">0</td><td class="n">1</td><td class="n">0</td><td class="n">HT</td><td class="n">1</td><td class="n">0</td></tr>
+<tr><td>Bearing walls — exterior</td><td class="n">3</td><td class="n">2</td><td class="n">1</td><td class="n">0</td><td class="n">2</td><td class="n">2</td><td class="n">2</td><td class="n">1</td><td class="n">0</td></tr>
+<tr><td>Bearing walls — interior</td><td class="n">3</td><td class="n">2</td><td class="n">1</td><td class="n">0</td><td class="n">1</td><td class="n">0</td><td class="n">1/HT</td><td class="n">1</td><td class="n">0</td></tr>
+<tr><td>Floor construction</td><td class="n">2</td><td class="n">2</td><td class="n">1</td><td class="n">0</td><td class="n">1</td><td class="n">0</td><td class="n">HT</td><td class="n">1</td><td class="n">0</td></tr>
+<tr><td>Roof construction</td><td class="n">1½</td><td class="n">1</td><td class="n">1</td><td class="n">0</td><td class="n">1</td><td class="n">0</td><td class="n">HT</td><td class="n">1</td><td class="n">0</td></tr>
+</tbody></table></div>
+<div class="hook"><b>The pattern, which is worth more than the cells</b><strong>Reading left to right, ratings fall.</strong> Type I-A is the most protected; V-B is unprotected combustible. <strong>Type III is the odd one</strong> — its exterior bearing walls stay at 2 hours in both A and B, because what defines Type III is a noncombustible exterior wall around a combustible interior. If an item asks which type has rated exterior walls but an unrated interior frame, the answer is <strong>III-B</strong>.</div>
+<div class="rl"><div class="hd">Three tables I could not verify — read them in your own code</div>
+<p>I could not reach primary code text for <strong>Table 602</strong> (exterior wall rating by fire separation distance), <strong>Table 705.8</strong> (maximum area of exterior wall openings), or <strong>Table 716.1(2)</strong> (fire door assembly ratings) in this session. ICC's own reader is JS-gated and up.codes blocks automated access. <strong>Rather than give you numbers I could not confirm, I am telling you they are missing.</strong> They matter — fire door ratings in particular are heavily tested — so pull them from an ICC Digital Codes subscription or a printed 2021 IBC and write them onto the Numbers page yourself. See the note there about what your Panic Notes claim on this subject.</p></div>
+<p><strong>What I could verify:</strong> <strong>§705.5 — exterior walls with a fire separation distance of 10 feet or less must be rated for exposure to fire from both sides.</strong> Beyond 10 ft, interior exposure only. <span class="chip c-ok">Verified, Seattle Building Code reproduction of 2021 IBC</span></p>
+<div class="rl"><div class="hd">Correction — your Panic Notes say 5 feet</div>
+<p>They state: "If your exterior wall has a fire separation distance from the neighboring building greater than 5', your fire rating only needs to account for interior fire exposure." <strong>The threshold is 10 feet, not 5.</strong> This is a straightforward factual error in a number you would otherwise memorise.</p></div>
+<div class="rl"><div class="hd">Correction — "1-hour walls get 1-hour doors" is not generally true</div>
+<p>Your Panic Notes say: "4-hour walls (3-hour doors) separate connected buildings, 2-hour walls (1.5 hour doors) separate stairwells and elevator shafts, 1-hour walls (1-hour doors) divide different occupancies." The first two pairings are right. <strong>The third is wrong in the common case.</strong> A 1-hour <em>shaft or exit enclosure</em> does take a 1-hour door — but a 1-hour <em>occupancy-separation fire barrier</em> takes a ¾-hour (45-minute) door, and a 1-hour <em>corridor wall</em> takes a ⅓-hour (20-minute) door. Since "divide different occupancies" describes a fire barrier, the note's own example is the case where it is wrong.</p>
+<p class="small">I am stating the ¾-hour and ⅓-hour figures as the well-established pattern but flagging that I could not confirm them against 2021 code text this session — which is exactly why you should pull Table 716.1(2) yourself.</p></div>
+
+<h4 class="s">Allowable area — the formula</h4>
+<p><strong>§506.2.1, single-occupancy:</strong> <strong>A<sub>a</sub> = A<sub>t</sub> + (NS × I<sub>f</sub>)</strong> for buildings of three storeys or fewer, per storey; <strong>A<sub>a</sub> = [A<sub>t</sub> + (NS × I<sub>f</sub>)] × S<sub>a</sub></strong> for more storeys, where <strong>S<sub>a</sub> = 3</strong> (or 4 if sprinklered under NFPA 13R). <span class="chip c-ok">Verified against two independent sources including ICC's own training material</span></p>
+<ul>
+<li><strong>A<sub>a</sub></strong> = allowable area</li>
+<li><strong>A<sub>t</sub></strong> = tabular area factor from Table 506.2, for the building's actual sprinkler condition</li>
+<li><strong>NS</strong> = the <em>nonsprinklered</em> tabular factor — used in the frontage term <strong>regardless of the building's actual sprinkler status</strong></li>
+<li><strong>I<sub>f</sub></strong> = frontage increase factor</li>
+<li><strong>S<sub>a</sub></strong> = storey multiplier</li>
+</ul>
+<div class="trap"><div class="hd">The NS trap</div><p>The frontage term uses <strong>NS</strong>, the nonsprinklered value, even in a fully sprinklered building. People substitute the sprinklered value there and get a much larger — and wrong — answer. Read the variable, not the building.</p></div>
+<div class="rl"><div class="hd">A genuine 2018 → 2021 change in the frontage increase</div>
+<p>The <strong>2015 and 2018 IBC</strong> used a formula: <strong>I<sub>f</sub> = (F/P − 0.25)(W/30)</strong>, where F is the perimeter fronting a public way or open space at least 20 ft wide, P is total perimeter, and W is the weighted average open-space width capped at 30 ft. If F/P is less than 0.25, I<sub>f</sub> = 0. <strong>The 2021 IBC replaced this with a table lookup, Table 506.3.3.</strong> <span class="chip c-rot">Change confirmed via ICC training material; I could not retrieve the 2021 table's values.</span> The qualifying conditions survive: <strong>minimum 20 ft open space width, and at least 25% of the perimeter must front it</strong> before you get any increase at all.</p></div>
+<p class="small"><strong>Sprinkler height and storey increase, §504.2:</strong> tabular height and storey limits increase when sprinklered — but <strong>Group I-2 in Types IIB/III/IV/V and Groups H-1, H-2, H-3 and H-5 get no increase</strong>, and an <strong>NFPA 13R building is capped at 4 storeys and 60 feet</strong> regardless. <span class="chip c-rot">Partially verified</span> — I could not confirm the specific increase values.</p>
+
+<h3 class="s"><span class="obj">PPD 2.2</span>Sprinklers — the thresholds <span class="chip c-ok">Verified, §903.2</span></h3>
+<div class="tw"><table>
+<thead><tr><th>Group</th><th>Required when</th></tr></thead>
+<tbody>
+<tr><td><strong>A-1, A-3, A-4</strong></td><td>Fire area exceeds <strong>12,000 SF</strong>, <em>or</em> occupant load is <strong>300 or more</strong>, <em>or</em> the fire area is located above a level of exit discharge</td></tr>
+<tr><td><strong>A-2</strong></td><td>Fire area exceeds <strong>5,000 SF</strong>, <em>or</em> occupant load is <strong>100 or more</strong>, <em>or</em> above exit discharge — the tightest assembly threshold, because A-2 is food and drink</td></tr>
+<tr><td><strong>A-5</strong></td><td>Enclosed accessory areas exceeding <strong>1,000 SF</strong></td></tr>
+<tr><td><strong>B, ambulatory care</strong></td><td>Throughout the floor where <strong>four or more</strong> care recipients are incapable of self-preservation, or one or more above exit discharge</td></tr>
+<tr><td><strong>E</strong></td><td>Fire areas with an occupant load of <strong>51 or more</strong></td></tr>
+<tr><td><strong>F-1</strong></td><td>Fire area exceeds <strong>12,000 SF</strong>, <em>or</em> more than <strong>three storeys</strong> above grade plane, <em>or</em> combined F-1 areas exceed <strong>24,000 SF</strong>. Also woodworking over 2,500 SF.</td></tr>
+<tr><td><strong>H</strong></td><td>Always</td></tr>
+<tr><td><strong>I</strong></td><td>Throughout the floor containing the Group I fire area. I-4: occupant load <strong>51 or more</strong></td></tr>
+<tr><td><strong>M</strong></td><td>Fire area exceeds <strong>12,000 SF</strong>, <em>or</em> more than three storeys, <em>or</em> combined exceeds <strong>24,000 SF</strong></td></tr>
+<tr><td><strong>R</strong></td><td>Throughout all Group R fire areas</td></tr>
+<tr><td><strong>S-1</strong></td><td>Exceeds <strong>12,000 SF</strong>, <em>or</em> more than three storeys, <em>or</em> combined exceeds <strong>24,000 SF</strong>; commercial vehicle storage over 5,000 SF; self-storage over 2,500 SF</td></tr>
+</tbody></table></div>
+<div class="hook"><b>The 12,000 / 24,000 / 3-storey pattern</b>A-1, A-3, A-4, F-1, M and S-1 all share it: <strong>12,000 SF fire area, 24,000 SF combined, or more than three storeys.</strong> Learn the pattern once, then learn the exceptions: <strong>A-2 is 5,000 and 100 occupants</strong> (people drinking, seated at tables), <strong>E is 51 occupants</strong>, <strong>R is always</strong>, <strong>H is always</strong>.</div>
+<p class="small"><strong>System standards:</strong> <strong>NFPA 13</strong> is the full system. <strong>NFPA 13R</strong> is permitted in Group R up to and including four storeys and not exceeding 60 feet. <strong>NFPA 13D</strong> is for one- and two-family dwellings, Group R-3, R-4 Condition 1, and townhouses of three storeys or fewer. <span class="chip c-ok">Verified</span></p>
+
+<h3 class="s"><span class="obj">PPD 2.3</span>Integrating multiple codes</h3>
+<p>The governing principle is simple and heavily tested: <strong>where two applicable requirements differ, the more restrictive governs.</strong> Zoning against building code, IBC against accessibility standard, model code against local amendment — always the stricter.</p>
+<p>The bodies you are integrating: <strong>IBC</strong> (life safety, construction), <strong>IEBC</strong> (existing buildings), <strong>IECC / ASHRAE 90.1</strong> (energy), <strong>ICC A117.1 and the 2010 ADA Standards</strong> (accessibility — note the ADA is <em>civil rights law</em>, not a building code, and is enforced separately), <strong>NFPA 13/72/101</strong>, <strong>IPC / IMC</strong>, and the local zoning ordinance.</p>
+<div class="trap"><div class="hd">Where ICC A117.1 and the 2010 ADA Standards diverge</div><p>A117.1-2009 matched the ADA on turning space at 60 in. <strong>A117.1-2017 moved several dimensions: turning space to 67 in, clear floor space to 30 × 52 in, push-side door clearance to 52 in.</strong> <span class="chip c-rot">Partially verified — from secondary commentary, not the ICC text itself.</span> The practical answer on an integration item is always the same: <strong>satisfy the more stringent of the two.</strong> Compliance with one does not excuse the other, because they are enforced by different authorities.</p></div>
+
+<h2 class="s">Section 1 · Environmental Conditions &amp; Context <span class="pill">10–16%</span></h2>
+<h3 class="s"><span class="obj">PPD 1.2</span>Sustainability frameworks <span class="chip c-out">Supplied from outside</span></h3>
+<div class="tw"><table>
+<thead><tr><th>System</th><th>What it measures</th><th>The distinguishing fact</th></tr></thead>
+<tbody>
+<tr><td><strong>LEED v4.1</strong></td><td>Design and construction across nine credit categories</td><td>110 points. <strong>Certified 40–49, Silver 50–59, Gold 60–79, Platinum 80+.</strong> <span class="chip c-rot">Third-party sourced; usgbc.org blocked automated access</span></td></tr>
+<tr><td><strong>Living Building Challenge</strong></td><td>Regenerative performance across seven "petals" — Place, Water, Energy, Health &amp; Happiness, Materials, Equity, Beauty</td><td>Requires <strong>12 months of actual audited performance</strong>, not modelling</td></tr>
+<tr><td><strong>WELL</strong></td><td>Occupant health across ten concepts — Air, Water, Nourishment, Light, Movement, Thermal Comfort, Sound, Materials, Mind, Community</td><td>100-point scale with minimums in each concept; recertify every 3 years</td></tr>
+<tr><td><strong>Passive House (PHIUS / PHI)</strong></td><td>Energy first — super-insulation, airtightness, high-performance glazing</td><td>PHIUS is the North American climate-specific variant; PHI is the original German standard</td></tr>
+<tr><td><strong>Green Globes</strong></td><td>A ~1,000-point menu</td><td><strong>No mandatory prerequisites</strong> — the main structural difference from LEED. One to Four Globes.</td></tr>
+<tr><td><strong>ENERGY STAR</strong></td><td>Operational energy performance</td><td>Needs <strong>12 months of actual utility data</strong>; scored 1–100; <strong>75 is the minimum to earn the label</strong>; annual recertification</td></tr>
+</tbody></table></div>
+<p>LEED's nine credit categories: <strong>Integrative Process, Location &amp; Transportation, Sustainable Sites, Water Efficiency, Energy &amp; Atmosphere, Materials &amp; Resources, Indoor Environmental Quality, Innovation, Regional Priority.</strong> <span class="chip c-un">I could not confirm the per-category point weightings and am not stating them.</span></p>
+<p><strong>EUI</strong> — energy use intensity, in <strong>kBtu per square foot per year</strong>. <strong>Site EUI</strong> is energy consumed at the building; <strong>Source EUI</strong> adds generation and transmission losses upstream, which is why it is the fairer cross-building comparison. National medians (Source / Site, kBtu/SF/yr) <span class="chip c-ok">Verified, ENERGY STAR Portfolio Manager</span>: office <strong>116.4 / 52.9</strong>; K-12 school <strong>104.4 / 48.5</strong>; multifamily <strong>118.1 / 59.6</strong>; hotel <strong>146.7 / 63.0</strong>; hospital <strong>426.9 / 234.3</strong>; retail <strong>120.0 / 51.4</strong>; warehouse <strong>52.9 / 22.7</strong>; supermarket <strong>444.0 / 196.0</strong>.</p>
+<div class="hook"><b>EPD vs HPD vs Declare — the one-line difference</b>An <strong>EPD (Environmental Product Declaration)</strong> answers <em>what is this product's environmental footprint</em> — governed by ISO 14025 and EN 15804, third-party verified. An <strong>HPD (Health Product Declaration)</strong> answers <em>what is it made of, and is anything in it hazardous</em> — ingredient and health disclosure. A <strong>Declare label</strong> is a simpler ingredient disclosure from the Living Future Institute. <strong>Footprint vs ingredients.</strong> They are complementary, never interchangeable.</div>
+<p class="small"><strong>Embodied carbon</strong> is the greenhouse gas released in extraction, manufacture, transport, construction, maintenance and disposal — as opposed to <strong>operational carbon</strong> from running the building. <strong>LCA</strong> (ISO 14040/14044) measures environmental impact; <strong>LCCA</strong> (ASTM E917) measures economic cost. Different disciplines, similar names — a reliable source of wrong answers.</p>
+
+<h2 class="s">Section 5 · Project Costs &amp; Budgeting <span class="pill">8–14%</span></h2>
+<p>The smallest section in PPD, and it got smaller in April 2026 when 5.2 narrowed from creating estimates to evaluating them. Learn the framework, not the arithmetic.</p>
+<div class="tw"><table>
+<caption>Estimate classes and expected accuracy — AACE International <span class="chip c-ok">Verified</span></caption>
+<thead><tr><th>Class</th><th>Project definition</th><th>Phase</th><th>Method</th><th class="n">Accuracy</th></tr></thead>
+<tbody>
+<tr><td><strong>5</strong></td><td>0–2%</td><td>Concept screening / programming</td><td>Parametric, capacity-factored, analogy</td><td class="n">−20 to −30% / +30 to +50%</td></tr>
+<tr><td><strong>4</strong></td><td>1–15%</td><td>Schematic design</td><td>Parametric assembly models</td><td class="n">−10 to −20% / +20 to +30%</td></tr>
+<tr><td><strong>3</strong></td><td>10–40%</td><td>Design development / budget authorisation</td><td>Semi-detailed unit costs, assembly line items</td><td class="n">−5 to −15% / +10 to +20%</td></tr>
+<tr><td><strong>2</strong></td><td>30–75%</td><td>Control estimate, bid</td><td>Detailed unit cost, semi-detailed takeoff</td><td class="n">−5 to −10% / +5 to +15%</td></tr>
+<tr><td><strong>1</strong></td><td>65–100%</td><td>Check estimate, pre-bid, change order</td><td>Detailed unit cost, full takeoff</td><td class="n">−3 to −5% / +3 to +10%</td></tr>
+</tbody></table></div>
+<p class="small">AACE's own caution, worth knowing: these are indicative ranges. "Accuracy range does not determine the class, nor does class determine the accuracy."</p>
+<div class="hook"><b>Which estimating method at which phase</b><strong>Square foot</strong> — area × historical $/SF. Needs only area and building type. <em>Programming and early SD.</em> <strong>Assembly / systems (UniFormat)</strong> — costs organised by system regardless of trade. Needs major system quantities. <em>SD through DD</em>, and the right tool when you are testing design alternatives against budget. <strong>Unit price (MasterFormat)</strong> — costs by trade division with full quantity takeoff. Needs complete documents. <em>CD and bidding.</em> The organising format tells you the phase: <strong>UniFormat = design phases; MasterFormat = construction phase.</strong></div>
+<div class="out"><div class="hd">Cost of the Work, AIA B101-2017 §6.1 <span class="chip c-ok">Verified against an executed B101-2017</span></div>
+<p><strong>Includes:</strong> the total cost to the Owner to construct all elements of the Project designed or specified by the Architect, <strong>including the contractors' general conditions costs, overhead and profit</strong>, and the reasonable value of labour, materials and equipment donated to or furnished by the Owner.</p>
+<p><strong>Excludes:</strong> the Architect's compensation, the cost of the land, rights-of-way, financing, <strong>contingencies for changes in the Work</strong>, and other costs that are the responsibility of the Owner.</p>
+<p class="small">The contingency exclusion is the detail people get wrong, and your Panic Notes get it right.</p></div>
+<p><strong>Hard cost</strong> — site work, foundations, structure, envelope, MEP, interior finishes, general conditions, contractor overhead and profit, construction contingency. <strong>Soft cost</strong> — A/E and consultant fees, permits and plan review, legal, financing and interest during construction, insurance, taxes during construction, land, marketing and leasing, developer fee, FF&amp;E, commissioning, owner's and design contingency.</p>
+<p><strong>Contingency</strong> <span class="chip c-rot">AIA-published guidance, not a code figure</span>: design contingency commonly <strong>5–10%</strong> of construction cost, drawn down as design certainty rises; construction contingency commonly <strong>5–10%</strong> under design-build; owner's contingency is risk-assessed individually — AIA's worked example allocated 3% for scope changes + 2% for risk mitigation + 1% project-specific = <strong>6%</strong>.</p>
+<p><strong>Cost indices</strong> <span class="chip c-ok">Verified, ENR</span>: the <strong>ENR Construction Cost Index (CCI)</strong> tracks 200 hours of <em>common</em> labour plus a fixed materials basket — weighted toward labour. The <strong>ENR Building Cost Index (BCI)</strong> tracks 68.38 hours of <em>skilled</em> labour plus the same basket — more applicable to buildings. <strong>RSMeans City Cost Index</strong> adjusts national averages to a place, not to a time. Escalation is normally applied to the <strong>midpoint of construction</strong>, because that represents the average cost environment the contractor actually builds in.</p>
+<div class="rl"><div class="hd">Numbers I am deliberately not giving you</div><p>Typical percentage ranges for general conditions, general contractor overhead and profit, subcontractor markup, and bond costs are widely repeated in the industry, but I could not confirm any of them against a professional body or standard. <strong>Rather than hand you figures you would memorise, I am telling you they are unverified.</strong> If an item gives you a markup percentage, use the one in the stem.</p></div>
+<p><strong>Value engineering</strong> is not cost cutting. The formal job plan, per SAVE International: <strong>Information → Function Analysis → Creative → Evaluation → Development → Presentation.</strong> <span class="chip c-ok">Verified</span> The distinguishing step is <strong>function analysis</strong>: every element is described as a verb plus a measurable noun ("resist load," "admit light"), which separates what must be <em>accomplished</em> from the solution someone already chose. Cost cutting removes scope; VE finds a cheaper way to perform the same function, judged on life-cycle cost.</p>
