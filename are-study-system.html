@@ -390,6 +390,34 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .alinks{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px}
 #authBody .learned{margin:0 0 12px}
 
+/* ---------- sidebar: hide/show and the activity calendar ---------- */
+
+#rail .brand{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.railbtn{flex:0 0 auto;display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer;padding:0}
+.railbtn:hover{border-color:var(--accent);color:var(--ink)}
+.railbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#railShow{display:none}
+.railheat{margin:18px 8px 0;padding-top:14px;border-top:1px solid var(--rule)}
+.railheat h4{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+.rhgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.rhgrid i{aspect-ratio:1;border-radius:3px;background:var(--rule-2);display:block;max-width:100%}
+.rhgrid i.l1{background:color-mix(in srgb,var(--accent) 30%,var(--rule-2))}
+.rhgrid i.l2{background:color-mix(in srgb,var(--accent) 60%,var(--rule-2))}
+.rhgrid i.l3{background:var(--accent)}
+.rhgrid i.t{outline:2px solid var(--ink-3);outline-offset:1px}
+.rhdow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-family:var(--mono);font-size:9px;color:var(--ink-3);text-align:center;margin-bottom:4px}
+.rhsum{font-family:var(--sans);font-size:12px;color:var(--ink-2);margin-top:9px;line-height:1.45}
+.rhsum b{color:var(--ink);font-weight:600}
+@media (min-width:861px){
+  #rail{display:flex;flex-direction:column}
+  body.railoff #shell{grid-template-columns:minmax(0,1fr)!important}
+  body.railoff #rail{display:none}
+  body.railoff #railShow{display:inline-grid}
+  body:not(.railoff) #view .heatpanel{display:none}   /* shown in the sidebar instead */
+}
+@media (max-width:860px){
+  #railHide,.railheat{display:none}
+}
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1840px;justify-self:center}
 @media (min-width:1200px){
@@ -470,11 +498,13 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 
 <div id="shell">
 <div id="rail">
-  <div class="brand"><b>ARE Study System</b><span>PA · PPD · PDD · 2026</span></div>
+  <div class="brand"><div><b>ARE Study System</b><span>PA · PPD · PDD · 2026</span></div><button type="button" class="railbtn" id="railHide" aria-label="Hide sidebar" title="Hide sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button></div>
   <nav id="nav" aria-label="Sections"></nav>
+  <section class="railheat" id="railHeat" aria-label="Last 28 days"></section>
 </div>
 <div id="main">
   <div class="topbar">
+    <button type="button" class="railbtn" id="railShow" aria-label="Show sidebar" title="Show sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     <div class="srch">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
       <input id="q" type="search" placeholder="Search notes, numbers, cards and questions — try “occupant load” or “LOD 350”" autocomplete="off" aria-label="Search everything">
@@ -522,7 +552,7 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
     <div class="sub">Objectives where you have missed questions or rated cards Again or Shaky.</div>
     <ul class="weak" id="tdWeak"></ul>
   </div>
-  <div class="panel">
+  <div class="panel heatpanel">
     <h3>Last 28 days</h3>
     <div class="sub" id="tdStreak">Cards reviewed and questions answered per day.</div>
     <div class="heat" id="tdHeat"></div>
@@ -726,6 +756,7 @@ window.addEventListener('pagehide',()=>{lsSave();if(dirty)push({leaving:true});}
 function logAct(){
   const k=ds(new Date()); S.log[k]=(S.log[k]||0)+1;
   const cut=ds(new Date(Date.now()-90*DAY)); Object.keys(S.log).forEach(d=>{if(d<cut)delete S.log[d];});
+  paintRailHeat();
 }
 function loadLocal(){S=blankState();const l=lsLoad();if(l&&l.v===2)S=Object.assign(S,l);normalize();}
 /* pull the signed-in account's copy of the current profile, keep whichever is newer */
@@ -843,6 +874,7 @@ function go(id,opts){
   const tpl=$('#tpl-'+id); if(tpl)view.appendChild(tpl.content.cloneNode(true));
   if(location.hash.slice(1)!==id){try{history.replaceState(null,'','#'+id);}catch(e){}}
   if(!opts.keepScroll)window.scrollTo(0,0);
+  paintRailHeat();
   if(id==='today')initToday();
   else if(id==='cards')initCards(opts);
   else if(id==='practice')initPractice(opts);
@@ -970,6 +1002,30 @@ function initToday(){
   $('#tdHeatFrom').textContent=new Date(t.getTime()-27*DAY).toLocaleDateString(undefined,{day:'numeric',month:'short'});
   $('#tdStreak').textContent=streak?streak+'-day streak. Cards reviewed and questions answered per day.':'Cards reviewed and questions answered per day. Study today to start a streak.';
 }
+/* Last 28 days in the sidebar: a 4-week calendar, Monday first, today outlined */
+function paintRailHeat(){
+  const el=$('#railHeat'); if(!el)return;
+  const t=midnight(new Date()), key=d=>ds(d), n=d=>S.log[key(d)]||0;
+  // grid ends on this week's Sunday so columns are weekdays; days after today stay blank
+  const endSun=new Date(t.getFullYear(),t.getMonth(),t.getDate()+(6-(t.getDay()+6)%7));
+  const first=new Date(endSun.getFullYear(),endSun.getMonth(),endSun.getDate()-27);
+  let cells='',total=0,active=0;
+  for(let i=0;i<28;i++){
+    const d=new Date(first.getFullYear(),first.getMonth(),first.getDate()+i), fut=d>t, c=fut?0:n(d);
+    if(!fut){total+=c;if(c)active++;}
+    cells+='<i class="'+(fut?'':c?(c<10?'l1':c<30?'l2':'l3'):'')+(+d===+t?' t':'')+'"'+(fut?' style="opacity:.35"':'')+' title="'+fmtDate(d)+': '+(fut?'—':c+' '+(c===1?'action':'actions'))+'"></i>';
+  }
+  let streak=0; for(let i=n(t)?0:1;i<400&&n(new Date(t.getFullYear(),t.getMonth(),t.getDate()-i));i++)streak++;
+  el.innerHTML='<h4>Last 28 days</h4><div class="rhdow"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div><div class="rhgrid">'+cells+'</div>'+
+    '<div class="rhsum">'+(streak?'<b>'+streak+'-day streak</b>':'<b>No streak yet</b> — study today to start one')+'<br>'+active+' active day'+(active===1?'':'s')+' · '+total+' study action'+(total===1?'':'s')+'</div>';
+}
+/* sidebar hide/show, remembered on this browser */
+const LSR='are_rail_off';
+function setRail(off){document.body.classList.toggle('railoff',off);try{localStorage.setItem(LSR,off?'1':'0');}catch(e){}}
+try{if(localStorage.getItem(LSR)==='1')document.body.classList.add('railoff');}catch(e){}
+$('#railHide').addEventListener('click',()=>{setRail(true);$('#railShow').focus();});
+$('#railShow').addEventListener('click',()=>{setRail(false);$('#railHide').focus();});
+
 /* exam dates: the plan's date unless this person set their own; sorted so "next" follows the real order */
 function myExams(){
   const o=S.examDates||{};
