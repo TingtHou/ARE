@@ -672,6 +672,7 @@ function setSync(t){const el=$('#sync');el.classList.toggle('on',synced);$('span
    Unsent changes are retried (30 s, then up to every 5 min), sent as soon as the connection
    returns, and sent immediately when the tab is hidden or closed. */
 let dirty=false, pushing=false, retryT=null, retryGap=30000;
+let SYNCERR=null;/* keep the last failed sync call so the account dialog can say exactly what went wrong */function noteSyncErr(method,status,text){  SYNCERR={at:Date.now(),method,status,text:String(text||'').slice(0,300)};  try{console.warn('ARE sync failed',SYNCERR);}catch(_){}  const e=new Error('sync '+status);e.sync=true;return e;}function syncErrText(){  if(!SYNCERR)return '';const s=SYNCERR;  const why=s.status===0?'The browser could not reach the progress service (blocked or no connection).':s.status===-1?'The sign-in could not be refreshed. Sign out and sign in again.':s.status===401||s.status===403?'The progress service did not accept your sign-in ('+s.status+').':s.status>=500?'The progress service had an error ('+s.status+').':'The progress service answered '+s.status+'.';  return why+' '+s.method+' at '+new Date(s.at).toLocaleTimeString()+(s.text?' — '+s.text:'');}
 function save(){
   S.at=Date.now(); lsSave(); dirty=true;
   clearTimeout(saveT);
@@ -686,9 +687,9 @@ async function push(opts){
   pushing=true; const at=S.at, body=JSON.stringify(S);
   try{
     if(AUTH_ON){
-      const t=await idToken(); if(!t)throw new Error('offline');
+      const t=await idToken(); if(!t)throw noteSyncErr('PUT',-1,'could not refresh the sign-in');
       const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body,keepalive:!!(opts&&opts.leaving)&&body.length<60000});
-      if(!r.ok)throw new Error('api '+r.status);
+      if(!r.ok){const txt=await r.text().catch(()=>'');throw noteSyncErr('PUT',r.status,txt);}
     } else {
       await db.doc(dbPath(PROF.cur)).set({v:2,data:S});
     }
@@ -696,7 +697,7 @@ async function push(opts){
     synced=true; retryGap=30000;
     if(!(opts&&opts.leaving)){setSync('Saved');setTimeout(()=>setSync(),1800);}
   }catch(e){
-    synced=false; setSync(AUTH_ON?'Offline · saved here':'This device only');
+    if(AUTH_ON&&!e.sync)noteSyncErr('PUT',0,String(e&&e.message||e)); synced=false; setSync(AUTH_ON?'Offline · saved here':'This device only');
     retryT=setTimeout(push,retryGap); retryGap=Math.min(retryGap*2,300000);
   }finally{pushing=false; if(dirty&&S.at!==at)saveT=setTimeout(push,900);}
 }
@@ -1039,9 +1040,9 @@ async function idToken(){
   return SESSION.id;
 }
 async function api(method,body){
-  const t=await idToken(); if(!t)throw new Error('offline');
-  const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method,headers:Object.assign({Authorization:'Bearer '+t},body?{'Content-Type':'application/json'}:{}),body});
-  if(!r.ok)throw new Error('api '+r.status);
+  const t=await idToken(); if(!t)throw noteSyncErr(method,-1,'could not refresh the sign-in');
+  let r;try{r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method,headers:Object.assign({Authorization:'Bearer '+t},body?{'Content-Type':'application/json'}:{}),body});}catch(e){throw noteSyncErr(method,0,String(e&&e.message||e));}
+  if(!r.ok){const txt=await r.text().catch(()=>'');throw noteSyncErr(method,r.status,txt);}
   return r.status===204?null:r.json();
 }
 function enterApp(){
@@ -1068,7 +1069,7 @@ function legacyProfiles(){
 function openAccount(msg){
   const leg=legacyProfiles();
   const n=Object.keys(S.cards).length,a=Object.keys(S.ans).length;
-  modalForm('<div class="lbl">Your account</div><div class="q">'+esc(curProf().name)+'</div><p class="small" style="margin-top:-6px">'+esc(SESSION.email)+' · '+n+' card'+(n===1?'':'s')+' rated · '+a+' question'+(a===1?'':'s')+' answered<br>'+(SESSION.offline?'Offline right now; changes are kept here and sync when you reconnect.':'Progress syncs to your account on every device you sign in on.')+'</p>'+
+  modalForm('<div class="lbl">Your account</div><div class="q">'+esc(curProf().name)+'</div><p class="small" style="margin-top:-6px">'+esc(SESSION.email)+' · '+n+' card'+(n===1?'':'s')+' rated · '+a+' question'+(a===1?'':'s')+' answered<br>'+(SESSION.offline?'Offline right now; changes are kept here and sync when you reconnect.':'Progress syncs to your account on every device you sign in on.')+'</p>'+(SYNCERR&&!synced?'<div class="aerr" style="margin:0 0 10px"><b>Not syncing.</b> '+esc(syncErrText())+'<div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-a="sync">Try sync now</button></div></div>':(synced?'<div class="learned good" style="margin:0 0 10px">Synced with your account.</div>':''))+
     (msg?'<div class="learned good" style="margin:0 0 10px">'+esc(msg)+'</div>':'')+
     (leg.length?'<details class="pio"'+(msg?' open':'')+'><summary>Bring in progress saved on this browser before accounts</summary><p class="small">This replaces the progress in your account with the profile you pick.</p><div class="plist">'+leg.map(x=>'<div class="prow"><span class="pick" style="cursor:default"><span class="av">'+esc(initials(x.name))+'</span><span><b>'+esc(x.name)+'</b><small>'+Object.keys(x.st.cards||{}).length+' cards rated · '+Object.keys(x.st.ans||{}).length+' questions answered</small></span></span><button type="button" class="btn sm" data-a="leg:'+x.id+'">Use this</button></div>').join('')+'</div></details>':'')+
     '<details class="pio"><summary>Copy progress as a code</summary><p class="small">A backup you can paste back in later. Importing replaces your current progress.</p><div class="row"><button type="button" class="btn sm" data-a="exp">Copy my progress code</button></div><textarea id="pCode" rows="3" placeholder="Paste a progress code here" aria-label="Progress code"></textarea><div class="row"><button type="button" class="btn sm" data-a="imp">Import</button></div></details>'+
@@ -1077,6 +1078,7 @@ function openAccount(msg){
     const [a2,id]=act.split(':');
     if(a2==='close')close();
     if(a2==='out')signOut();
+    if(a2==='sync'){close();SYNCERR=null;setSync('Syncing…');pullRemote().then(()=>{if(dirty)return push();}).then(()=>{if(SYNCERR)openAccount();else toast('Synced');});}
     if(a2==='leg'){const x=leg.find(y=>y.id===id);if(!x)return;S=Object.assign(blankState(),x.st);normalize();save();close();go(curPage||'today');toast('Progress from '+x.name+' added to your account');}
     if(a2==='exp'){const code='ARE1.'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));const ta=$('#pCode',m);ta.value=code;try{navigator.clipboard.writeText(code).then(()=>toast('Progress code copied'),()=>ta.select());}catch(e){ta.select();}}
     if(a2==='imp'){const raw=$('#pCode',m).value.trim();try{if(!raw.startsWith('ARE1.'))throw 0;const d=JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));if(!d||d.v!==2)throw 0;S=Object.assign(blankState(),d);normalize();save();close();go(curPage||'today');toast('Progress imported');}
