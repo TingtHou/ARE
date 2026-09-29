@@ -668,21 +668,44 @@ let db=null, uid=null, saveT=null, synced=false, curPage=null;
 function lsLoad(id){try{const r=localStorage.getItem(lsKey(id||PROF.cur));return r?JSON.parse(r):null;}catch(e){return null;}}
 function lsSave(){try{localStorage.setItem(lsKey(PROF.cur),JSON.stringify(S));}catch(e){}}
 function setSync(t){const el=$('#sync');el.classList.toggle('on',synced);$('span',el).textContent=t||(synced?'Synced':'This device');}
+/* Autosave: every change is written to this browser at once; the account copy follows ~1 s later.
+   Unsent changes are retried (30 s, then up to every 5 min), sent as soon as the connection
+   returns, and sent immediately when the tab is hidden or closed. */
+let dirty=false, pushing=false, retryT=null, retryGap=30000;
 function save(){
-  S.at=Date.now(); lsSave();
+  S.at=Date.now(); lsSave(); dirty=true;
   clearTimeout(saveT);
-  saveT=setTimeout(async()=>{
-    if(AUTH_ON){
-      if(!SESSION)return;
-      try{await api('PUT',JSON.stringify(S));synced=true;setSync('Saved');setTimeout(()=>setSync(),1800);}
-      catch(e){synced=false;setSync('Offline · saved here');}
-      return;
-    }
-    if(!db||!uid){setSync();return;}
-    try{await db.doc(dbPath(PROF.cur)).set({v:2,data:S});synced=true;setSync('Saved');setTimeout(()=>setSync(),1800);}
-    catch(e){synced=false;setSync('This device only');}
-  },900);
+  saveT=setTimeout(push,900);
 }
+const canPush=()=>AUTH_ON?!!SESSION:!!(db&&uid);
+async function push(opts){
+  clearTimeout(saveT); clearTimeout(retryT);
+  if(!dirty)return;
+  if(!canPush()){setSync();return;}
+  if(pushing){saveT=setTimeout(push,900);return;}
+  pushing=true; const at=S.at, body=JSON.stringify(S);
+  try{
+    if(AUTH_ON){
+      const t=await idToken(); if(!t)throw new Error('offline');
+      const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body,keepalive:!!(opts&&opts.leaving)&&body.length<60000});
+      if(!r.ok)throw new Error('api '+r.status);
+    } else {
+      await db.doc(dbPath(PROF.cur)).set({v:2,data:S});
+    }
+    if(S.at===at)dirty=false;           // a newer change made meanwhile stays queued
+    synced=true; retryGap=30000;
+    if(!(opts&&opts.leaving)){setSync('Saved');setTimeout(()=>setSync(),1800);}
+  }catch(e){
+    synced=false; setSync(AUTH_ON?'Offline · saved here':'This device only');
+    retryT=setTimeout(push,retryGap); retryGap=Math.min(retryGap*2,300000);
+  }finally{pushing=false; if(dirty&&S.at!==at)saveT=setTimeout(push,900);}
+}
+window.addEventListener('online',()=>{if(dirty)push();});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'){if(dirty)push({leaving:true});}
+  else if(!dirty&&canPush()&&document.getElementById('shell')&&!$('#shell').hidden)pullRemote(); // back to the tab: pick up work from other devices
+});
+window.addEventListener('pagehide',()=>{lsSave();if(dirty)push({leaving:true});});
 function logAct(){
   const k=ds(new Date()); S.log[k]=(S.log[k]||0)+1;
   const cut=ds(new Date(Date.now()-90*DAY)); Object.keys(S.log).forEach(d=>{if(d<cut)delete S.log[d];});
@@ -695,7 +718,7 @@ async function pullRemote(){
     try{
       const rem=await api('GET');
       if(rem&&rem.v===2&&(rem.at||0)>(S.at||0)){S=Object.assign(blankState(),rem);normalize();lsSave();route(true);}
-      else if(S.at){save();}
+      else if(S.at&&(!rem||!rem.at||rem.at<S.at)){dirty=true;push();}
       synced=true; setSync();
       if(!rem&&!S.at&&legacyProfiles().length)openAccount('Welcome. This browser has study progress from before accounts — you can bring it into your account below.');
     }catch(e){synced=false;setSync('Offline · saved here');}
@@ -706,7 +729,7 @@ async function pullRemote(){
     const snap=await db.doc(dbPath(PROF.cur)).get();
     const rem=snap&&snap.exists?snap.data():null;
     if(rem&&rem.data&&(rem.data.at||0)>(S.at||0)){S=Object.assign(blankState(),rem.data);normalize();lsSave();route(true);}
-    else if(S.at){save();}
+    else if(S.at&&(!rem||!rem.data||!rem.data.at||rem.data.at<S.at)){dirty=true;push();}
     synced=true; setSync();
   }catch(e){synced=false;setSync('This device only');}
 }
@@ -1030,6 +1053,7 @@ function enterApp(){
 async function signOut(){
   clearTimeout(saveT);
   if(SESSION&&!SESSION.offline&&S.at){try{await api('PUT',JSON.stringify(S));}catch(e){}}
+  clearTimeout(retryT); dirty=false;
   try{localStorage.removeItem(lsKey(PROF.cur));localStorage.removeItem(LSA);}catch(e){}
   SESSION=null; S=blankState(); synced=false; setSync();
   $('#modal').hidden=true; $('#scrim').hidden=true;
