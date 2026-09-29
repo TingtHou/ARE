@@ -11,3 +11,4 @@ $utf8 = New-Object Text.UTF8Encoding $false
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'are-study-system.html'), $sb.ToString(), $utf8)
 "are-study-system.html built from $($parts.Count) parts"
 & (Join-Path $PSScriptRoot 'build-index.ps1')
+& (Join-Path $PSScriptRoot 'aws\build-stack.ps1')

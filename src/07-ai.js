@@ -1,137 +1,90 @@
 
-/* ================= CLAUDE: each person connects their own Anthropic API key =================
-   Calls go straight from this browser to the Claude API and bill the person's own account.
-   The key is kept on this device only (never in progress, never sent to the site's API).
-   Not available inside the claude.ai viewer, which blocks outside network calls. */
-const AI_SDK='https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.129.0/+esm';
-const AI_MODELS=[['claude-opus-5-5','Claude Opus 5.5 · best answers (default)'],['claude-sonnet-5-5','Claude Sonnet 5.5 · faster, costs about half']];
-const LSK='are_claude_key', LSM='are_claude_model';
-const AI_MODE=(window.claude&&window.claude.use)?'plan':'key';   // plan: the viewer's own claude.ai plan (sample); key: their own API key
-const AI_POSSIBLE=true;
+/* ================= CLAUDE: on each person's own Claude plan =================
+   On claude.ai the page asks Claude directly (sample), on the viewer's plan.
+   On the website, Claude is reached through the ARE Study System connector: each person adds it once in
+   Claude (Settings → Connectors) and signs in with their study account, and the "with Claude" buttons
+   open claude.ai with a ready-made prompt. The connector reads and saves the same progress as this site. */
+const AI_MODE=(window.claude&&window.claude.use)?'plan':'connector';
+const CONNECTOR_URL=AC.apiUrl?AC.apiUrl.replace(/\/+$/,'')+'/mcp':'';
+const AI_POSSIBLE=AI_MODE==='plan'||(AUTH_ON&&!!CONNECTOR_URL);
+const LSC_DONE='are_connector_added';
 let SAMPLE=undefined;   // the claude.ai sample function once resolved; null when this view can't use it
 if(AI_MODE==='plan'){window.claude.use('sample').then(s=>{SAMPLE=s||null;paintAiBtn();}).catch(()=>{SAMPLE=null;paintAiBtn();});}
-let aiMod=null, aiClient=null, aiClientKey=null;
-function aiKey(){try{return localStorage.getItem(LSK)||sessionStorage.getItem(LSK)||'';}catch(e){return '';}}
-function aiModel(){try{const m=localStorage.getItem(LSM);return AI_MODELS.some(x=>x[0]===m)?m:AI_MODELS[0][0];}catch(e){return AI_MODELS[0][0];}}
-const aiReady=()=>AI_MODE==='plan'?!!SAMPLE:!!aiKey();
-function aiStore(key,remember,model){
-  try{localStorage.removeItem(LSK);sessionStorage.removeItem(LSK);if(key)(remember?localStorage:sessionStorage).setItem(LSK,key);if(model)localStorage.setItem(LSM,model);}catch(e){}
-  aiClient=null; paintAiBtn();
-}
-async function aiGetClient(){
-  const key=aiKey(); if(!key)throw aiError({status:-2});
-  if(aiClient&&aiClientKey===key)return aiClient;
-  if(!aiMod){try{aiMod=await import(AI_SDK);}catch(e){throw aiError({status:0,message:'Could not load the Claude library. Check your internet connection.'});}}
-  const Anthropic=aiMod.default||aiMod.Anthropic;
-  aiClient=new Anthropic({apiKey:key,dangerouslyAllowBrowser:true,maxRetries:2}); aiClientKey=key;
-  return aiClient;
-}
-/* turn SDK errors into plain sentences */
-function aiError(e){
-  const st=e&&e.status, msg=String((e&&e.error&&e.error.error&&e.error.error.message)||(e&&e.message)||'');
-  let t;
-  if(st===-2)t='Connect your Claude first: add your Anthropic API key in Claude settings.';
-  else if(st===401)t='Claude did not accept this API key. Check it in Claude settings, or create a new one at console.anthropic.com.';
-  else if(st===403)t='This API key is not allowed to use '+aiModel()+'. Try the other model in Claude settings, or check the key’s workspace.';
-  else if(st===429)t='Too many requests to Claude right now. Wait a minute and try again.';
-  else if(st===400&&/credit|balance|billing/i.test(msg))t='Your Anthropic account is out of credit. Add credit at console.anthropic.com, then try again.';
-  else if(st===400)t='Claude could not handle this request: '+msg.slice(0,200);
-  else if(st===529||st>=500)t='Claude is busy or having a problem. Try again in a moment.';
-  else if(st===0||/fetch|network|Failed to load/i.test(msg))t=msg&&st===0?msg:'Could not reach Claude. Check your internet connection.';
-  else t=msg||'Something went wrong talking to Claude.';
-  const x=new Error(t); x.ai=true; x.status=st; return x;
-}
-/* one streamed request; onText(fullTextSoFar) as it arrives; returns the final text */
+try{localStorage.removeItem('are_claude_key');sessionStorage.removeItem('are_claude_key');localStorage.removeItem('are_claude_model');}catch(e){}   // from the old API-key option
+const aiReady=()=>AI_MODE==='plan'&&!!SAMPLE;
 /* claude.ai route: sample() has no system prompt, so the instructions lead the first user turn */
 const SAMPLE_MSG={not_granted:'This page is not allowed to use your Claude. Reload the page and choose Allow when claude.ai asks.',sampling_disabled:'Claude is not available for your claude.ai account here.',
   not_declared:'Claude features are switched off on this page.',capability_disabled:'Claude is not available in this view.',capability_removed:'This Claude app is too old for this feature. Update the app or open claude.ai in a browser.',
   rate_limited:'You have reached your Claude usage limit, or sent too many requests. Try again later.',session_expired:'Sign in to claude.ai again, then try once more.',
   refused:'Claude declined this request. Try rewording it.',empty_completion:'Claude returned an empty answer. Try asking for less.',invalid_json:'Claude’s answer was not in the expected format. Try again.',
   prompt_too_large:'That is too much text for one request. Shorten the notes and try again.'};
-function sampleErr(e){if(e&&e.code==='cancelled')return Object.assign(new Error('Stopped.'),{ai:true,aborted:true});const x=new Error(SAMPLE_MSG[e&&e.code]||'Claude had a problem answering. Try again in a moment.');x.ai=true;x.code=e&&e.code;x.status=e&&e.code==='not_granted'?-3:undefined;return x;}
+function sampleErr(e){if(e&&e.code==='cancelled')return Object.assign(new Error('Stopped.'),{ai:true,aborted:true});const x=new Error(SAMPLE_MSG[e&&e.code]||'Claude had a problem answering. Try again in a moment.');x.ai=true;x.code=e&&e.code;return x;}
 function sampleInput(system,messages){
   const turns=messages.map(m=>({role:m.role,content:String(m.content)}));
   turns[0]={role:'user',content:(system?'Instructions for this conversation: '+system+'\n\n':'')+turns[0].content};
   return turns.length===1?turns[0].content:turns;
 }
-async function aiStream({system,messages,effort,maxTokens,onText,schema,signal}){
-  if(AI_MODE==='plan'){
-    if(!SAMPLE)throw Object.assign(new Error(SAMPLE===undefined?'Claude is still starting. Try again in a moment.':'Claude is not available in this view.'),{ai:true});
-    try{const r=await SAMPLE(sampleInput(system,messages),{signal,cache:false,modelTier:effort==='low'?'default':'complex',onText:onText?({text})=>onText(text):undefined});
-      if(r.truncated&&schema)throw Object.assign(new Error('Claude’s answer was cut off. Ask for fewer items at a time.'),{ai:true});
-      return r.text;}
-    catch(e){if(e&&e.ai)throw e;throw sampleErr(e);}
-  }
-  const client=await aiGetClient(), model=aiModel();
-  const params={model,max_tokens:maxTokens||16000,system,messages,output_config:{effort:effort||'low'},
-    betas:['server-side-fallback-2026-07-01'],fallbacks:'default'};
-  if(schema)params.output_config.format={type:'json_schema',schema};
-  let text='';
-  try{
-    const stream=client.beta.messages.stream(params,signal?{signal}:undefined);
-    for await(const ev of stream){
-      if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){text+=ev.delta.text;if(onText)onText(text);}
-    }
-    const fin=await stream.finalMessage();
-    if(fin.stop_reason==='refusal')throw Object.assign(new Error('Claude declined this request. Try rewording it.'),{ai:true});
-    const all=(fin.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-    if(all)text=all;
-    if(fin.stop_reason==='max_tokens'&&schema)throw Object.assign(new Error('Claude’s answer was cut off. Ask for fewer items at a time.'),{ai:true});
-    return text;
-  }catch(e){if(e&&e.ai)throw e;if(e&&e.name==='AbortError')throw Object.assign(new Error('Stopped.'),{ai:true,aborted:true});throw aiError(e);}
+function noSample(){return Object.assign(new Error(SAMPLE===undefined?'Claude is still starting. Try again in a moment.':'Claude is not available in this view.'),{ai:true});}
+/* one streamed request; onText(fullTextSoFar) as it arrives; returns the final text */
+async function aiStream({system,messages,effort,onText,schema,signal}){
+  if(!SAMPLE)throw noSample();
+  try{const r=await SAMPLE(sampleInput(system,messages),{signal,cache:false,modelTier:effort==='low'?'default':'complex',onText:onText?({text})=>onText(text):undefined});
+    if(r.truncated&&schema)throw Object.assign(new Error('Claude’s answer was cut off. Ask for fewer items at a time.'),{ai:true});
+    return r.text;}
+  catch(e){if(e&&e.ai)throw e;throw sampleErr(e);}
 }
 async function aiJson(opts){
-  if(AI_MODE==='plan'){
-    if(!SAMPLE)throw Object.assign(new Error('Claude is not available in this view.'),{ai:true});
-    const msgs=opts.messages.slice(); const last=msgs[msgs.length-1];
-    msgs[msgs.length-1]={role:'user',content:last.content+'\n\nReply with only one JSON object that matches this JSON Schema exactly (every listed field present, no other fields):\n'+JSON.stringify(opts.schema)};
-    try{return await SAMPLE.json(sampleInput(opts.system,msgs),{signal:opts.signal,cache:false,modelTier:'complex'});}
-    catch(e){throw sampleErr(e);}
-  }
-  const t=await aiStream(Object.assign({},opts,{onText:opts.onText}));try{return JSON.parse(t);}catch(e){const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a>=0&&b>a)return JSON.parse(t.slice(a,b+1));throw Object.assign(new Error('Claude’s answer was not in the expected format. Try again.'),{ai:true});}}
+  if(!SAMPLE)throw noSample();
+  const msgs=opts.messages.slice(); const last=msgs[msgs.length-1];
+  msgs[msgs.length-1]={role:'user',content:last.content+'\n\nReply with only one JSON object that matches this JSON Schema exactly (every listed field present, no other fields):\n'+JSON.stringify(opts.schema)};
+  try{return await SAMPLE.json(sampleInput(opts.system,msgs),{signal:opts.signal,cache:false,modelTier:'complex'});}
+  catch(e){throw sampleErr(e);}
+}
 const AI_SYS='You are a study coach for the ARE 5.0 architecture licensing exams (PA, PPD and PDD). Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Write plainly and briefly for an architecture graduate. Use short paragraphs, "- " bullets and **bold** for the key rule; no headings.';
+
+/* ---------- website: hand a prompt to Claude, which reaches this account through the connector ---------- */
+const CLAUDE_NEW='https://claude.ai/new?q=';
+const connAdded=()=>{try{return !!localStorage.getItem(LSC_DONE);}catch(e){return false;}};
+function askClaude(prompt){
+  const full='Use my ARE Study System connector. '+prompt;
+  if(!connAdded()){openClaudeSettings(()=>askClaude(prompt));return;}
+  window.open(CLAUDE_NEW+encodeURIComponent(full.slice(0,6000)),'_blank','noopener');
+  try{navigator.clipboard.writeText(full).catch(()=>{});}catch(e){}
+  toast('Opened Claude in a new tab · the prompt is also copied');
+}
 
 /* ---------- settings ---------- */
 function paintAiBtn(){
   const b=$('#aiBtn'); if(!b)return;
   if(AI_MODE==='plan'){b.hidden=SAMPLE===null;b.classList.add('on');b.title='Ask Claude, using your claude.ai plan';$('span',b).textContent='Ask Claude';return;}
-  if(!AI_POSSIBLE){b.hidden=true;return;}
-  b.hidden=false; b.classList.toggle('on',aiReady());
-  b.title=aiReady()?'Ask Claude about what you are studying':'Connect your own Claude';
-  $('span',b).textContent=aiReady()?'Ask Claude':'Connect Claude';
+  b.hidden=!AI_POSSIBLE; b.classList.toggle('on',connAdded());
+  b.title=connAdded()?'Study with Claude, on your own Claude plan':'Connect Claude to your study account';
+  $('span',b).textContent=connAdded()?'Study with Claude':'Connect Claude';
 }
 function openClaudeSettings(after){
   if(AI_MODE==='plan'){
     modalForm('<div class="lbl">Your Claude</div><div class="q">Claude on your claude.ai plan</div>'+
-      (SAMPLE?'<p class="small">Here on claude.ai, the Claude features use <b>your own claude.ai plan</b> (Pro or Max usage). No API key is needed, and nothing is billed separately. The first time you use one, claude.ai asks you to allow this page.</p>'+
+      (SAMPLE?'<p class="small">Here on claude.ai, the Claude features use <b>your own claude.ai plan</b>. No API key is needed, and nothing is billed separately. The first time you use one, claude.ai asks you to allow this page.</p>'+
         '<p class="small">If you chose <b>Don’t allow</b>, reload the page to be asked again.</p>'
       :'<p class="small">Claude is not available in this view. Open the study site at claude.ai in a browser or the Claude app, signed in to your account.</p>')+
       '<div class="row" style="margin-top:12px">'+(SAMPLE&&after?'<button type="button" class="btn pri" data-a="go">Continue</button>':'')+'<button type="button" class="btn" data-a="close">Close</button></div>',
       (a,m,close)=>{close();if(a==='go'&&after)after();});
     return;
   }
-  const has=!!aiKey(), remembered=(()=>{try{return !!localStorage.getItem(LSK);}catch(e){return false;}})();
-  modalForm('<div class="lbl">Your Claude</div><div class="q">Connect your own Claude</div>'+
-    '<p class="small">Paste an Anthropic API key to turn on Claude features: explaining mistakes, a study tutor, generating cards and questions, and a personal plan. Requests go straight from this browser to Claude and are billed to <b>your</b> Anthropic account. The key is kept on this device only; it is never saved to your study account or sent to this site.</p>'+
-    '<form class="edf" id="aiForm"><label class="af"><span>Anthropic API key</span><input id="aiKeyIn" type="password" autocomplete="off" spellcheck="false" placeholder="'+(has?'•••• saved — paste a new key to replace it':'sk-ant-…')+'"></label>'+
-    '<p class="ahint">Create one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API keys</a>. Add a spending limit there if you like.</p>'+
-    '<label class="af"><span>Model</span><select class="sel" id="aiModelIn">'+AI_MODELS.map(m=>'<option value="'+m[0]+'"'+(m[0]===aiModel()?' selected':'')+'>'+m[1]+'</option>').join('')+'</select></label>'+
-    '<label class="pass" style="margin:4px 0 8px"><input type="checkbox" id="aiRemember"'+(!has||remembered?' checked':'')+'> Remember on this device (untick on a shared computer: the key is forgotten when you close the tab)</label>'+
-    '<div id="aiMsg"></div><div class="row" id="aiActs"><button type="submit" class="btn pri">'+(has?'Save':'Test and save')+'</button><button type="button" class="btn" data-a="close">Cancel</button>'+(has?'<button type="button" class="btn" data-a="remove" style="color:var(--flag)">Remove key</button>':'')+'</div></form>',
-  (a,m,close)=>{
-    if(a==='close')close();
-    if(a==='remove'){aiStore('',false);close();toast('Claude key removed from this device');}
-  },
-  async(form,m,close)=>{
-    const key=$('#aiKeyIn',m).value.trim(), model=$('#aiModelIn',m).value, rem=$('#aiRemember',m).checked, msg=$('#aiMsg',m);
-    if(!key&&has){aiStore(aiKey(),rem,model);close();toast('Claude settings saved');if(after)after();return;}
-    if(!/^sk-ant-/.test(key)){msg.innerHTML='<div class="aerr">That does not look like an Anthropic API key. Keys start with sk-ant-.</div>';return;}
-    const prev=aiKey(), prevRem=remembered;
-    aiStore(key,rem,model); msg.innerHTML='<p class="small">Checking the key with Claude…</p>';
-    try{await aiStream({system:'Reply with the single word OK.',messages:[{role:'user',content:'Say OK.'}],effort:'low',maxTokens:64});
-      close();toast('Claude connected');if(after)after();}
-    catch(e){aiStore(prev,prevRem,model);msg.innerHTML='<div class="aerr">'+esc(e.message)+'</div>';}
-  });
+  const done=connAdded();
+  modalForm('<div class="lbl">Your Claude</div><div class="q">Study with Claude, on your own plan</div>'+
+    '<p class="small">Add this site to Claude once as a <b>connector</b>. Then, in any Claude chat, Claude can see your progress, quiz you, record your answers and flashcard ratings, explain your mistakes, add cards and questions to your material, and plan your weeks. Everything saves to this account, so it shows up here too. It uses your own Claude plan; there is no API key and nothing extra to pay.</p>'+
+    '<ol class="small connsteps"><li>In Claude, open <a href="https://claude.ai/settings/connectors" target="_blank" rel="noopener">Settings → Connectors</a> and choose <b>Add custom connector</b>.</li>'+
+    '<li>Name it <b>ARE Study System</b> and paste this URL:<div class="connurl"><input id="connUrl" readonly value="'+esc(CONNECTOR_URL)+'"><button type="button" class="btn sm" data-a="copy">Copy</button></div></li>'+
+    '<li>Click <b>Connect</b>, then sign in with your study account: the same email and password as here.</li>'+
+    '<li>Start a chat and ask “What should I study today?”. If Claude doesn’t use the connector, turn it on from the chat’s tools menu.</li></ol>'+
+    '<p class="small">Your Claude plan must allow custom connectors. To disconnect, remove it in Claude’s connector settings.</p>'+
+    '<div class="row" style="margin-top:12px">'+(after?'<button type="button" class="btn pri" data-a="go">'+(done?'Continue to Claude':'I’ve added it · continue to Claude')+'</button>':'<button type="button" class="btn pri" data-a="start">'+(done?'Start a study chat':'I’ve added it · start a study chat')+'</button>')+'<button type="button" class="btn" data-a="close">Close</button></div>',
+    (a,m,close)=>{
+      if(a==='copy'){copyText(CONNECTOR_URL,'Connector URL copied',$('#connUrl',m));return;}
+      if(a==='go'||a==='start'){try{localStorage.setItem(LSC_DONE,'1');}catch(e){}paintAiBtn();close();if(a==='go')after();else askClaude('What should I study today? Look at my plan week, due cards, due mistakes and weak spots, then give me a short prioritized list.');return;}
+      close();
+    });
 }
 function needAi(then){if(aiReady())return true;openClaudeSettings(then);return false;}
 
@@ -150,13 +103,16 @@ async function aiRun(box,opts,footHtml,onDone){
     body.innerHTML=md2html(t); box.querySelector('[data-ai="stop"]').remove();
     $('.aifoot',box).innerHTML=footHtml||''; if(onDone)onDone(t,box);
   }catch(e){body.innerHTML='<div class="aerr" style="margin:0">'+esc(e.message)+'</div>';const s=box.querySelector('[data-ai="stop"]');if(s)s.remove();
-    if(e.status===-2||e.status===401)$('.aifoot',box).innerHTML='<button type="button" class="btn sm" data-ai="settings">Claude settings</button>';}
+    if(e.code==='not_granted')$('.aifoot',box).innerHTML='<button type="button" class="btn sm" data-ai="settings">Claude settings</button>';}
   box.onclick=ev=>{if(ev.target.closest('[data-ai="settings"]'))openClaudeSettings();};
 }
 function aiExplainItem(it,sel,host,mistakeId){
+  const opt=i=>String.fromCharCode(65+i)+'. '+strip(it.opts[i]);
+  if(AI_MODE==='connector'){askClaude('Explain practice question '+it.id+' ('+it.o+') a different way than the book. Question: '+strip(it.s)+' Options: '+it.opts.map((o,i)=>opt(i)).join(' / ')+
+    '. Correct: '+it.c.map(opt).join('; ')+'. I chose: '+(sel&&sel.length?sel.map(opt).join('; '):'nothing')+'. First the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.'+
+    (mistakeId?' Then offer to quiz me on a similar question.':''));return;}
   if(!needAi(()=>aiExplainItem(it,sel,host,mistakeId)))return;
   const box=aiBox(host,'Explaining '+it.o);
-  const opt=i=>String.fromCharCode(65+i)+'. '+it.opts[i];
   const prompt='Practice question ('+it.o+', '+(it.t==='cata'?'check all that apply':'multiple choice')+'):\n'+strip(it.s)+'\n\nOptions:\n'+it.opts.map((o,i)=>opt(i)).join('\n')+
     '\n\nCorrect: '+it.c.map(opt).join('; ')+'\nI chose: '+(sel&&sel.length?sel.map(opt).join('; '):'nothing')+
     (it.e?'\n\nThe book explanation (which did not click for me): '+strip(it.e):'')+
@@ -166,6 +122,7 @@ function aiExplainItem(it,sel,host,mistakeId){
     (t,b)=>{const s=b.querySelector('[data-ai="savenote"]');if(s)s.onclick=()=>{const m=S.mist[mistakeId];m.note=((m.note?m.note+'\n\n':'')+'Claude: '+strip(md2html(t))).slice(0,1000);save();s.replaceWith(Object.assign(document.createElement('span'),{className:'small',textContent:'Saved to your note'}));const ta=document.querySelector('textarea[data-i="'+mistakeId+'"]');if(ta)ta.value=m.note;};});
 }
 function aiExplainCard(c,host){
+  if(AI_MODE==='connector'){askClaude('Explain flashcard '+c.id+' ('+c.o+', deck '+c.d+'). Question: '+strip(c.q)+' Answer: '+strip(c.a)+' I keep forgetting this. Explain why it is true in plain terms, give one realistic exam-style situation where it decides the answer, and a memory hook. Under 150 words.');return;}
   if(!needAi(()=>aiExplainCard(c,host)))return;
   const box=aiBox(host,'Explaining this card');
   aiRun(box,{system:AI_SYS,messages:[{role:'user',content:'Flashcard ('+c.o+', deck '+c.d+').\nQuestion: '+strip(c.q)+'\nAnswer: '+strip(c.a)+'\n\nI keep forgetting this. Explain why it is true in plain terms, give one realistic exam-style situation where it decides the answer, and a memory hook. Under 150 words.'}],effort:'low',maxTokens:3000});
@@ -184,6 +141,8 @@ function objectiveOptions(sel){
 }
 function openGenerate(preset,done){
   preset=preset||{};
+  if(AI_MODE==='connector'){const what=preset.kind==='cards'?'5 flashcards':preset.kind==='questions'?'5 practice questions':'a few flashcards and practice questions';
+    askClaude('Make '+what+(preset.obj?' on objective '+preset.obj+' ('+objTitle(preset.obj)+')':' on my weakest objective (check weak_spots)')+'. Check my existing material first so you don’t repeat it, show me the drafts, and add them to my material once I say yes.');return;}
   if(!needAi(()=>openGenerate(preset,done)))return;
   modalForm('<div class="lbl">Claude · your own material</div><div class="q">Generate study material</div>'+
     '<p class="small">Claude drafts cards and questions; you review them before anything is added to your material.</p>'+
@@ -224,6 +183,7 @@ function weakList(){
   return Object.values(weak).sort((a,b)=>b.n-a.n).slice(0,10).map(x=>x.o+' ('+objTitle(x.o)+')');
 }
 function openPlanBuilder(){
+  if(AI_MODE==='connector'){askClaude('Build me my own weekly study plan from this week to my last exam, around my exam dates, my weak spots and what I have already done (check study_status and weak_spots). Ask me how many hours a week I can study and anything else you need first. Show me the plan, and save it with set_study_plan only when I agree.');return;}
   if(!needAi(openPlanBuilder))return;
   const ex=myExams().filter(e=>!S.passed[e.d]), today=ds(new Date());
   modalForm('<div class="lbl">Claude · your plan</div><div class="q">Build my own study plan</div>'+
@@ -263,5 +223,5 @@ function openPlanBuilder(){
 }
 
 /* ---------- wiring ---------- */
-if($('#aiBtn'))$('#aiBtn').addEventListener('click',()=>aiReady()?openChat():openClaudeSettings(openChat));
+if($('#aiBtn'))$('#aiBtn').addEventListener('click',()=>AI_MODE==='connector'?openClaudeSettings():aiReady()?openChat():openClaudeSettings(openChat));
 paintAiBtn();

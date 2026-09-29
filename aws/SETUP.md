@@ -83,3 +83,28 @@ Every change goes to the `develop` branch first and shows on a **preview site**.
 3. A **Publish to live site…** button appears in the yellow Preview banner. It lists the changes waiting and asks you to confirm before publishing.
 
 Publishing only moves `main` forward to match `develop`. If `main` ever has a change that `develop` doesn't, it stops and says so instead of overwriting.
+
+# The Claude connector
+
+The connector lets each person use **their own Claude plan** with their study account. It runs on the same API as progress sync: one extra Lambda function, plus a catch-all route. At study-group scale it stays in the AWS free tier.
+
+## 1. Update the stack
+1. Open **CloudFormation** (region **US East (N. Virginia)**), then **are-accounts**, then **Update**, then **Replace existing template**, and upload the new `aws/are-accounts.yaml`. Take it from the `develop` branch until it is published.
+2. Keep every parameter as it is. The two new ones have the right defaults:
+   - **SiteUrl:** `https://main.d27g401yt8k71l.amplifyapp.com`. The connector reads the shared material from here.
+   - **StudyTimeZone:** `America/Chicago`. This decides what "today" means for plan weeks and study days.
+3. Tick the IAM box, then **Submit**, and wait for **UPDATE_COMPLETE**.
+4. On the **Outputs** tab, copy **ConnectorUrl**. It looks like `https://igmnvwc8n8.execute-api.us-east-1.amazonaws.com/mcp`. The site already knows it, because it's the API address plus `/mcp`.
+
+## 2. Add it to Claude (each person does this once)
+1. In Claude, go to **Settings → Connectors → Add custom connector**.
+2. **Name:** `ARE Study System`. **URL:** the ConnectorUrl. Leave the advanced settings empty.
+3. Click **Add**, then **Connect**. A sign-in page opens: use the same email and password as the study website.
+4. In a new chat, ask "What should I study today?". The first time Claude uses a tool, it may ask you to allow it.
+
+## Good to know
+- **What Claude can do:** read your progress and the material, record answers and flashcard ratings, add or remove *your own* cards, questions and points, tick plan tasks, and save or remove your own plan. It can't change the shared material or anyone else's data.
+- **Sign-in:** Claude gets a one-hour access token and a 90-day refresh token for your account. Both are stored as fingerprints (hashes), never in plain form, and expire on their own. If you disable someone in Cognito, their connector stops working at its next refresh.
+- **Disconnect:** remove the connector in Claude's settings.
+- **The website and Claude at the same time:** both save to the same account. The website picks up Claude's changes when you switch back to its tab. If you answer questions on the website while Claude is also saving, the last save wins, so finish one before starting the other.
+- **Material changes** on the live site reach the connector within 10 minutes.

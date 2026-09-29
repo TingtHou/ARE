@@ -1,6 +1,6 @@
 
 /* ================= CHAT PANEL: a docked Claude chat that can act on the study site =================
-   Works on both routes: the person's API key (website) or their claude.ai plan (claude.ai link).
+   Runs on the claude.ai link, on the viewer's claude.ai plan. (The website reaches Claude through the connector instead.)
    Claude gets page "tools" (search, quiz, record answers, rate cards, add material, open pages);
    each call shows as a small expandable row, and additions can be undone. */
 const LSC='are_chats_v1', LSW='are_chat_w';
@@ -54,7 +54,7 @@ function openChat(){
   buildChat(); chatsLoad(); if(!CUR)CUR=CHATS[0]&&CHATS[0].route===AI_MODE?CHATS[0]:newChat();
   const p=$('#chat'); p.hidden=false; document.body.classList.add('chaton');
   document.documentElement.style.setProperty('--chw',p.getBoundingClientRect().width+'px');
-  $('#chRoute').textContent=AI_MODE==='plan'?'your claude.ai plan':(aiModel().includes('sonnet')?'Sonnet 5.5':'Opus 5.5')+' · your API key';
+  $('#chRoute').textContent='your claude.ai plan';
   paintChatLog(); paintCtx(); setTimeout(()=>$('#chIn').focus(),30);
 }
 function closeChat(){const p=$('#chat');if(p)p.hidden=true;document.body.classList.remove('chaton');}
@@ -245,45 +245,11 @@ async function sendChatMsg(){
   paintChatLog(); chatBusy=new AbortController(); $('#chSend').textContent='Stop';
   const paint=()=>{const last=$('#chLog').lastElementChild;if(last){last.outerHTML='<div class="cm assistant">'+am.tools.map(toolRow).join('')+(am.text?mdRich(am.text):'<span class="small chthink">Thinking…</span>')+'</div>';$('#chLog').scrollTop=$('#chLog').scrollHeight;}};
   try{
-    if(AI_MODE==='plan')await chatViaPlan(content,am,paint);
-    else await chatViaKey(content,am,paint);
-  }catch(e){am.error=e&&e.aborted?'':String(e&&e.message||'Something went wrong.');if(!am.text&&!am.tools.length&&!e.aborted)inp.value=raw;
-    // a stopped turn must not leave a tool call without its result, or the next request is rejected
-    const last=CUR.api[CUR.api.length-1];
-    if(last&&last.role==='assistant'&&Array.isArray(last.content)){const us=last.content.filter(b=>b.type==='tool_use');if(us.length)CUR.api.push({role:'user',content:us.map(u=>({type:'tool_result',tool_use_id:u.id,content:'Stopped by the student.',is_error:true}))});}}
+    await chatViaPlan(content,am,paint);
+  }catch(e){am.error=e&&e.aborted?'':String(e&&e.message||'Something went wrong.');if(!am.text&&!am.tools.length&&!e.aborted)inp.value=raw;}
   am.pending=false; chatBusy=null; $('#chSend').textContent='Send';
   const i=CHATS.findIndex(c=>c.id===CUR.id); if(i>=0)CHATS.splice(i,1); CHATS.unshift(CUR); chatsSave();
   paintChatLog(); paintCtx();
-}
-/* API-key route: the model loop with tool use, appending full assistant turns unchanged */
-async function chatViaKey(content,am,paint){
-  const client=await aiGetClient(), model=aiModel();
-  CUR.api.push({role:'user',content});
-  const tools=CHAT_TOOLS.map(t=>({name:t.name,description:t.description,input_schema:t.schema,eager_input_streaming:true}));
-  for(let round=0;round<8;round++){
-    let fin;
-    try{
-      const stream=client.beta.messages.stream({model,max_tokens:16000,system:CHAT_SYS(),messages:CUR.api,tools,tool_choice:{type:'auto'},output_config:{effort:'low'},betas:['server-side-fallback-2026-07-01'],fallbacks:'default'},{signal:chatBusy.signal});
-      let base=am.text?am.text+'\n\n':'';
-      for await(const ev of stream){if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){am.text=(base+=ev.delta.text);paint();}}
-      fin=await stream.finalMessage();
-    }catch(e){if(e&&e.name==='AbortError')throw Object.assign(new Error('Stopped.'),{aborted:true});throw aiError(e);}
-    if(fin.stop_reason==='refusal')throw new Error('Claude declined this request. Try rewording it.');
-    CUR.api.push({role:'assistant',content:fin.content});
-    const uses=(fin.content||[]).filter(b=>b.type==='tool_use');
-    if(fin.stop_reason!=='tool_use'||!uses.length){if(fin.stop_reason==='max_tokens'&&!am.text)throw new Error('Claude’s answer was cut off. Ask for less at a time.');return;}
-    const results=[];
-    for(const u of uses){
-      const tr={id:'t'+Math.random().toString(36).slice(2,8),name:u.name}; am.tools.push(tr); paint();
-      let input=u.input; if(typeof input==='string'){try{input=JSON.parse(input);}catch(e){input=null;}}
-      if(!input||typeof input!=='object'){tr.done=true;tr.error='Invalid input';results.push({type:'tool_result',tool_use_id:u.id,content:'INVALID_JSON: re-send this tool call with valid JSON input.',is_error:true});continue;}
-      try{const r=await runTool(u.name,input,tr);results.push({type:'tool_result',tool_use_id:u.id,content:JSON.stringify(r).slice(0,30000)});}
-      catch(e){results.push({type:'tool_result',tool_use_id:u.id,content:'Error: '+tr.error,is_error:true});}
-      paint();
-    }
-    CUR.api.push({role:'user',content:results});
-  }
-  am.text+=(am.text?'\n\n':'')+'_(Stopped after several steps. Ask me to continue.)_';
 }
 /* claude.ai-plan route: sample() runs the tool rounds and calls these page functions */
 async function chatViaPlan(content,am,paint){

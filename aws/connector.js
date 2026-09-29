@@ -1,0 +1,488 @@
+// ARE Study System connector for Claude (claude.ai → Settings → Connectors → Add custom connector).
+// People sign in with their site account; Claude then reads and updates the same progress the site uses.
+//   GET  /.well-known/oauth-protected-resource[/mcp]   where to sign in (RFC 9728)
+//   GET  /.well-known/oauth-authorization-server[/..]  sign-in endpoints (RFC 8414)
+//   POST /oauth/register                              Claude registers itself (RFC 7591)
+//   GET  /oauth/authorize, POST /oauth/authorize      the sign-in page
+//   POST /oauth/token                                 codes and refresh tokens → access tokens
+//   POST /mcp                                         the tools (MCP over Streamable HTTP, JSON replies)
+// Material is read from the live site (material/*.js and notes), so it never needs copying here.
+'use strict';
+const crypto = require('crypto');
+const vm = require('vm');
+
+const TABLE = process.env.TABLE, CLIENT_ID = process.env.CLIENT_ID, POOL_ID = process.env.POOL_ID;
+const SITE = String(process.env.SITE_URL || '').replace(/\/+$/, '');
+const TZ = process.env.STUDY_TZ || 'America/Chicago';
+const AT_LIFE = 3600, RT_LIFE = 90 * 86400, CODE_LIFE = 300;
+const REDIRECTS = [/^https:\/\/claude\.ai\/api\/mcp\/auth_callback$/, /^https:\/\/claude\.com\/api\/mcp\/auth_callback$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/callback$/];
+const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+
+/* ---------- storage and sign-in (replaced by fakes in tests) ---------- */
+let deps = null;
+function D() {
+  if (deps) return deps;
+  const ddb = require('@aws-sdk/client-dynamodb'), cip = require('@aws-sdk/client-cognito-identity-provider');
+  const db = new ddb.DynamoDBClient({}), cog = new cip.CognitoIdentityProviderClient({});
+  const key = k => ({ userId: { S: k } });
+  deps = {
+    async get(k) { const r = await db.send(new ddb.GetItemCommand({ TableName: TABLE, Key: key(k), ConsistentRead: true })); return r.Item ? { data: r.Item.data && r.Item.data.S, updatedAt: r.Item.updatedAt ? Number(r.Item.updatedAt.N) : null, ttl: r.Item.ttl ? Number(r.Item.ttl.N) : null } : null; },
+    async put(k, data, ttl) { await db.send(new ddb.PutItemCommand({ TableName: TABLE, Item: Object.assign(key(k), { data: { S: data }, ttl: { N: String(ttl) } }) })); },
+    async take(k) { const r = await db.send(new ddb.DeleteItemCommand({ TableName: TABLE, Key: key(k), ReturnValues: 'ALL_OLD' })); return r.Attributes && r.Attributes.data ? { data: r.Attributes.data.S, ttl: Number(r.Attributes.ttl && r.Attributes.ttl.N || 0) } : null; },
+    async putProgress(sub, data, prevAt) {
+      try {
+        await db.send(new ddb.PutItemCommand({ TableName: TABLE, Item: Object.assign(key(sub), { data: { S: data }, updatedAt: { N: String(Date.now()) } }),
+          ConditionExpression: prevAt == null ? 'attribute_not_exists(updatedAt)' : 'updatedAt = :u', ExpressionAttributeValues: prevAt == null ? undefined : { ':u': { N: String(prevAt) } } }));
+        return true;
+      } catch (e) { if (e.name === 'ConditionalCheckFailedException') return false; throw e; }
+    },
+    async login(email, password) {
+      const r = await cog.send(new cip.InitiateAuthCommand({ ClientId: CLIENT_ID, AuthFlow: 'USER_PASSWORD_AUTH', AuthParameters: { USERNAME: email, PASSWORD: password } }));
+      if (!r.AuthenticationResult) throw Object.assign(new Error('challenge'), { name: r.ChallengeName || 'Challenge' });
+      const p = JSON.parse(Buffer.from(r.AuthenticationResult.IdToken.split('.')[1], 'base64url').toString('utf8'));
+      return { sub: p.sub, email: p.email, name: p.name || '' };
+    },
+    async userOk(sub) {
+      try {
+        const r = await cog.send(new cip.ListUsersCommand({ UserPoolId: POOL_ID, Filter: 'sub = "' + sub.replace(/"/g, '') + '"', Limit: 1 }));
+        const u = r.Users && r.Users[0]; return !!(u && u.Enabled !== false);
+      } catch (e) { return true; }   // never lock people out because the check itself failed
+    }
+  };
+  return deps;
+}
+
+/* ---------- small helpers ---------- */
+const DAY = 864e5, MIN = 6e4, INT = [10 * MIN, DAY, 3 * DAY, 7 * DAY, 16 * DAY, 35 * DAY], MGAP = [DAY, 3 * DAY, 7 * DAY], DIVS = ['PA', 'PPD', 'PDD'];
+const rnd = () => crypto.randomBytes(32).toString('base64url');
+const sha = s => crypto.createHash('sha256').update(s).digest('base64url');
+const nowS = () => Math.floor(Date.now() / 1000);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', times: '×', deg: '°', plusmn: '±', le: '≤', ge: '≥', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', middot: '·', frac12: '½', frac14: '¼', frac34: '¾', sup2: '²', sup3: '³', asymp: '≈', minus: '−', rarr: '→', larr: '←' };
+const decode = s => String(s).replace(/&(#x[0-9a-f]+|#\d+|[a-z0-9]+);/gi, (m, e) => e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1)) : (ENT[e.toLowerCase()] != null ? ENT[e.toLowerCase()] : m));
+const strip = h => decode(String(h || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+const lines = h => decode(String(h || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|li|tr|div|h[1-6]|ul|ol|table|pre|blockquote)>/gi, '\n').replace(/<t[dh]\b[^>]*>/gi, ' | ').replace(/<[^>]+>/g, ''))
+  .split('\n').map(l => l.replace(/\s+/g, ' ').replace(/^\s*\|\s*/, '').trim()).filter(Boolean).join('\n');
+const pad = n => String(n).padStart(2, '0');
+const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const dsOf = t => dayFmt.format(new Date(t));
+const today = () => dsOf(Date.now());
+const normD = s => { const p = String(s || '').split('-').map(Number); return p.length === 3 && p.every(n => !isNaN(n)) ? p[0] + '-' + pad(p[1]) + '-' + pad(p[2]) : null; };
+const dayNo = s => { const p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / DAY; };
+const daysFrom = (a, b) => Math.round(dayNo(b) - dayNo(a));
+const whenStr = t => { const d = daysFrom(today(), dsOf(t)); return d <= 0 ? 'today' : d === 1 ? 'tomorrow' : 'in ' + d + ' days'; };
+const odiv = o => { const p = String(o || '').split(' ')[0]; return DIVS.includes(p) ? p : null; };
+const L = i => String.fromCharCode(65 + i);
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const newUid = () => 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+function inlineMd(s) { return esc(s).replace(/&#39;/g, "'").replace(/&lt;(\/?)(sub|sup)&gt;/g, '<$1$2>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, '$1<em>$2</em>'); }
+function md2html(t) {
+  return String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map(b => {
+    const ls = b.split('\n').filter(x => x.trim()); if (!ls.length) return '';
+    if (ls.every(l => /^\s*[-•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + inlineMd(l.replace(/^\s*[-•]\s+/, '')) + '</li>').join('') + '</ul>';
+    if (ls.every(l => /^\s*\d+[.)]\s+/.test(l))) return '<ol>' + ls.map(l => '<li>' + inlineMd(l.replace(/^\s*\d+[.)]\s+/, '')) + '</li>').join('') + '</ol>';
+    return '<p>' + ls.map(inlineMd).join('<br>') + '</p>';
+  }).join('');
+}
+const oneLine = t => inlineMd(String(t || '').trim()).replace(/\n/g, '<br>');
+
+/* ---------- the shared material, read from the live site (cached 10 minutes) ---------- */
+const NOTE_PAGES = { overview: 'Overview', objectives: 'Objective map', pa: 'Programming & Analysis', ppd: 'Planning & Design', pdd: 'Development & Docs', numbers: 'Numbers' };
+let MAT = null, MAT_AT = 0;
+async function material() {
+  if (MAT && Date.now() - MAT_AT < 600000) return MAT;
+  const get = p => fetch(SITE + '/' + p, { headers: { 'cache-control': 'no-cache' } }).then(r => { if (!r.ok) throw new Error(p + ' ' + r.status); return r.text(); });
+  const ids = Object.keys(NOTE_PAGES);
+  const [c, q, p, ...notes] = await Promise.all(['material/cards.js', 'material/questions.js', 'material/plan.js'].concat(ids.map(i => 'material/notes/' + i + '.html')).map(get));
+  const ctx = {}; ctx.window = ctx; vm.createContext(ctx);
+  [c, q, p].forEach(code => vm.runInContext(code, ctx, { timeout: 2000 }));
+  const A = JSON.parse(JSON.stringify(ctx.ARE || {}));
+  const M = {
+    cards: (A.cards || []).filter(x => x && x.id != null && x.q && x.a).map(x => Object.assign({}, x, { id: String(x.id), d: x.d || 'Other', o: x.o || '—' })),
+    items: (A.questions || []).filter(x => x && x.id != null && x.s && Array.isArray(x.opts) && Array.isArray(x.c)).map(x => Object.assign({}, x, { id: String(x.id), t: x.t === 'cata' ? 'cata' : 'mc', e: x.e || '' })),
+    plan: (A.plan || []).slice().sort((a, b) => a.w - b.w),
+    exams: (A.exams || []).map(e => ({ d: e.d, n: e.name || e.d, date: normD(e.date) })),
+    heads: [], rows: [], objt: {}
+  };
+  ids.forEach((pid, i) => {
+    const html = notes[i], re = /<(h[1-4])\b[^>]*>([\s\S]*?)<\/\1>/gi, hs = []; let m;
+    while ((m = re.exec(html))) hs.push({ lv: +m[1][1], inner: m[2], start: m.index, end: re.lastIndex });
+    hs.forEach((h, k) => {
+      const objs = [...h.inner.matchAll(/<span class="obj">([\s\S]*?)<\/span>/g)].map(x => strip(x[1]));
+      const nx = hs.slice(k + 1).find(x => x.lv <= 3), nx4 = hs[k + 1];
+      M.heads.push({ page: pid, lv: h.lv, title: strip(h.inner.replace(/<span class="obj">[\s\S]*?<\/span>/g, '')), objs,
+        text: lines(html.slice(h.end, nx4 ? nx4.start : html.length)), full: lines(html.slice(h.end, nx ? nx.start : html.length)) });
+    });
+    let div = null;
+    const re2 = /<h2\b[^>]*>([\s\S]*?)<\/h2>|<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+    while ((m = re2.exec(html))) {
+      if (m[1] != null) { const pill = m[1].match(/class="pill[^"]*">([^<]*)</); div = pill ? pill[1].trim() : null; continue; }
+      const td = [...m[2].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(x => strip(x[1]));
+      if (td.length >= 2) M.rows.push({ page: pid, cells: td });
+      if (pid === 'objectives' && td.length === 3 && div) M.objt[div + ' ' + td[0]] = td[1].replace(/(Narrowed|Clarified) Apr 2026/, '').trim();
+    }
+  });
+  MAT = M; MAT_AT = Date.now();
+  return M;
+}
+
+/* ---------- one person's progress, with their own material layered on top (same rules as the site) ---------- */
+const blankState = () => ({ v: 2, at: 0, cards: {}, ans: {}, plan: {}, passed: {}, log: {}, mist: {}, cardMiss: {}, deck: '', fcMode: 'due', qdiv: '', qmode: 'all' });
+function study(M, S) {
+  const C = S.custom || {}, cc = C.cards || {}, ci = C.items || {};
+  const CK = ['d', 'o', 'q', 'a', 'qraw', 'araw'], IK = ['d', 'o', 't', 's', 'opts', 'c', 'e', 'sraw', 'eraw'];
+  const pick = (o, ks) => { const r = {}; ks.forEach(k => { if (o[k] != null) r[k] = o[k]; }); return r; };
+  const cards = []; M.cards.forEach(c => { const o = cc[c.id]; if (o && o.hidden) return; cards.push(o ? Object.assign({}, c, pick(o, CK)) : c); });
+  Object.keys(cc).filter(k => !M.cards.some(b => b.id === k) && !cc[k].hidden && cc[k].q && cc[k].a).forEach(k => cards.push(Object.assign({ o: '—', d: 'My cards' }, pick(cc[k], CK), { id: k, mine: true })));
+  let items = []; M.items.forEach(q => { const o = ci[q.id]; if (o && o.hidden) return; items.push(o ? Object.assign({}, q, pick(o, IK)) : q); });
+  Object.keys(ci).filter(k => !M.items.some(b => b.id === k) && !ci[k].hidden).forEach(k => items.push(Object.assign({ t: 'mc', e: '' }, pick(ci[k], IK), { id: k, mine: true })));
+  items = items.filter(q => q.s && Array.isArray(q.opts) && q.opts.length >= 2 && Array.isArray(q.c) && q.c.length && q.c.every(k => k >= 0 && k < q.opts.length));
+  const map = {}; items.forEach(it => { map[it.id] = it; });
+  const cp = S.customPlan, own = !!(cp && Array.isArray(cp.weeks) && cp.weeks.length);
+  const plan = own ? cp.weeks : M.plan;
+  const points = Object.keys(C.points || {}).map(k => Object.assign({ id: k }, C.points[k])).sort((a, b) => (a.at || 0) - (b.at || 0));
+  const exams = M.exams.map(e => { const o = normD((S.examDates || {})[e.d]); return Object.assign({}, e, { date: o || e.date }); }).sort((a, b) => a.date < b.date ? -1 : 1);
+  return { M, S, cards, items, item: id => map[id], plan, own, points, exams, taskId: (w, i) => (own ? 'cw' : 'w') + w + 't' + i, objTitle: o => M.objt[o] || (o === '—' ? 'Source corrections' : o) };
+}
+function normalize(S) {
+  ['cards', 'ans', 'plan', 'passed', 'log', 'mist', 'cardMiss'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = {}; });
+  Object.keys(S.ans).forEach(i => { const a = S.ans[i]; if (a && !a.ok && a.sel && a.sel.length && !S.mist[i]) S.mist[i] = { n: 1, sel: a.sel, at: a.at || Date.now(), due: Date.now(), stage: 0, fixed: false, note: '' }; });
+  return S;
+}
+function curWeek(X) {
+  const t = today(), P = X.plan;
+  if (!P.length || t < normD(P[0].from)) return 0;
+  for (const w of P) { if (t <= normD(w.to)) return w.w; }
+  return P.length + 1;
+}
+function logAct(S) {
+  const k = today(); S.log[k] = (S.log[k] || 0) + 1;
+  const cut = dsOf(Date.now() - 90 * DAY); Object.keys(S.log).forEach(d => { if (d < cut) delete S.log[d]; });
+}
+const mistDue = X => { const now = Date.now(); return Object.keys(X.S.mist).filter(i => { const m = X.S.mist[i]; return !m.fixed && m.due <= now && X.item(i); }); };
+const itemOk = (it, sel) => sel.length === it.c.length && sel.every(i => it.c.includes(i));
+function queueObjCards(X, o) {
+  if (!o || o === '—') return 0;
+  const now = Date.now(); let n = 0;
+  X.cards.filter(c => c.o === o).forEach(c => { const s = X.S.cards[c.id];
+    if (!s) { X.S.cards[c.id] = { b: 0, n: 0, due: now, q: 1 }; n++; }
+    else if (s.due > now) { s.due = now; s.b = Math.min(s.b, 1); n++; } });
+  return n;
+}
+function record(X, id, sel) {
+  const S = X.S, it = X.item(id), ok = itemOk(it, sel), now = Date.now();
+  S.ans[id] = { sel: sel.slice(), ok, at: now };
+  let msg = '';
+  const m = S.mist[id];
+  if (!ok) {
+    const e = m || { n: 0, note: '' };
+    e.n++; e.sel = sel.slice(); e.at = now; e.stage = 0; e.due = now + MGAP[0]; e.fixed = false;
+    S.mist[id] = e;
+    const q = queueObjCards(X, it.o);
+    msg = 'Logged in the mistakes. This question comes back tomorrow' + (q ? ', and ' + q + ' ' + it.o + ' flashcard' + (q === 1 ? ' is' : 's are') + ' now in today’s review' : '') + '.' + (e.n > 1 ? ' Missed ' + e.n + ' times so far.' : '');
+  } else if (m && !m.fixed) {
+    if (now >= m.due - 6 * 36e5) {
+      m.stage++;
+      if (m.stage >= MGAP.length) { m.fixed = true; m.fixedAt = now; msg = 'Fixed: right three times on schedule.'; }
+      else { m.due = now + MGAP[m.stage]; msg = 'Right on schedule (' + m.stage + ' of 3). It comes back in ' + Math.round(MGAP[m.stage] / DAY) + ' days.'; }
+    } else msg = 'Right, but an early retry, so the schedule stays. It is due ' + whenStr(m.due) + '.';
+  }
+  logAct(S);
+  return msg;
+}
+function buildIndex(X) {
+  const I = [];
+  X.cards.forEach(c => I.push({ k: 'Card · ' + c.d, t: strip(c.q), x: strip(c.a) }));
+  X.items.forEach(it => I.push({ k: 'Question · ' + it.o, t: strip(it.s), x: it.opts.map(strip).join(' · ') }));
+  X.points.forEach(p => { const t = strip(md2html(p.text)); I.push({ k: 'My point · ' + (p.div === 'GEN' ? 'General' : (p.obj ? p.div + ' ' + p.obj : p.div)), t: t.slice(0, 140), x: t }); });
+  X.M.heads.forEach(h => I.push({ k: 'Notes · ' + NOTE_PAGES[h.page], t: (h.objs.length ? h.objs.join(', ') + ' — ' : '') + h.title, x: h.text.replace(/\s+/g, ' ') }));
+  X.M.rows.forEach(r => I.push({ k: (r.page === 'numbers' ? 'Number' : 'Table') + ' · ' + NOTE_PAGES[r.page], t: r.cells[0], x: r.cells.slice(1).join(' · '), row: 1 }));
+  I.forEach(r => { r.lt = r.t.toLowerCase(); r.lx = r.x.toLowerCase(); });
+  return I;
+}
+function search(X, q) {
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean); if (!terms.length) return [];
+  const out = [];
+  buildIndex(X).forEach(r => { let sc = 0; for (const t of terms) { const a = r.lt.includes(t), b = r.lx.includes(t); if (!a && !b) return; sc += a ? 3 : 1; }
+    if (r.lt.includes(q.toLowerCase())) sc += 4; if (r.row) sc += 1; out.push([sc, r]); });
+  return out.sort((a, b) => b[0] - a[0]).slice(0, 8).map(([, r]) => {
+    const p = terms.map(t => r.lx.indexOf(t)).filter(i => i >= 0).sort((a, b) => a - b)[0] || 0, s = Math.max(0, p - 120);
+    return { kind: r.k, title: r.t.slice(0, 160), excerpt: (s ? '…' : '') + r.x.slice(s, s + 600) };
+  });
+}
+function toolRating(X, id, r) {
+  const S = X.S;
+  if (!X.cards.find(x => x.id === id)) throw new Error('No flashcard with card_id ' + id + '.');
+  const s = S.cards[id] || { b: 0, n: 0, due: 0 }, now = Date.now(), had = !!S.cards[id];
+  if (r === 1) { S.cardMiss[id] = (S.cardMiss[id] || 0) + 1; s.b = 0; s.due = now + INT[0]; }
+  else if (r === 2) { s.b = Math.max(1, Math.min(s.b, 2)); s.due = now + DAY; }
+  else { s.b = Math.min(5, (had ? s.b : 1) + 1); s.due = now + INT[s.b]; }
+  s.n = (s.n || 0) + 1; s.r = r; S.cards[id] = s; logAct(S);
+  return 'next due ' + whenStr(s.due);
+}
+const objIn = s => { const o = String(s || '').trim().toUpperCase().replace(/\s+/g, ' '), d = odiv(o), ob = (o.match(/\d+\.\d+/) || [''])[0]; return { o, d, ob, full: d ? (ob ? d + ' ' + ob : d) : '' }; };
+const custom = (S, kind) => { S.custom = S.custom || {}; S.custom[kind] = S.custom[kind] || {}; return S.custom[kind]; };
+const OBJ = (props, req) => ({ type: 'object', properties: props || {}, required: req || [], additionalProperties: false });
+const RO = { readOnlyHint: true, openWorldHint: false }, RW = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
+
+/* ---------- the tools ---------- */
+const TOOLS = [
+  { name: 'study_status', title: 'Study status', annotations: RO, description: 'The student’s current situation: today’s date, study-plan week and its tasks (with task_id and done), exam dates and days left, flashcard and question counts, and how many mistakes are due. Use at the start of planning or "what should I do" questions.',
+    inputSchema: OBJ(), run: X => { const t = today(), w = curWeek(X), W = X.plan.find(x => x.w === w), now = Date.now(); let nw = 0, due = 0, strong = 0, ans = 0, ok = 0;
+      X.cards.forEach(c => { const s = X.S.cards[c.id]; if (!s) { nw++; return; } if (s.due <= now) due++; if (s.b >= 3) strong++; });
+      X.items.forEach(i => { const a = X.S.ans[i.id]; if (a) { ans++; if (a.ok) ok++; } });
+      return { today: t, plan: X.own ? 'the student’s own plan' : 'the standard plan', plan_week: W ? { week: w, of: X.plan.length, dates: W.d, goal: W.g, tasks: W.t.map((x, i) => ({ task_id: X.taskId(W.w, i), text: x, done: !!X.S.plan[X.taskId(W.w, i)] })) } : (w === 0 ? 'the plan has not started yet' : 'the plan is finished'),
+        exams: X.exams.map(e => ({ division: e.d, name: e.n, date: e.date, days_left: e.date ? daysFrom(t, e.date) : null, passed: !!X.S.passed[e.d] })),
+        flashcards: { total: X.cards.length, due_now: due, new: nw, strong }, questions: { total: X.items.length, answered: ans, correct: ok }, mistakes_due: mistDue(X).length, study_days_last_28: Object.keys(X.S.log).filter(d => d >= dsOf(now - 28 * DAY)).length }; } },
+  { name: 'weak_spots', title: 'Weak spots', annotations: RO, description: 'The student’s weakest objectives, from missed questions and cards rated Again or Shaky, weakest first.',
+    inputSchema: OBJ(), run: X => { const w = {}, row = o => (w[o] = w[o] || { objective: o, title: X.objTitle(o), missed_questions: 0, shaky_cards: 0 });
+      X.items.forEach(it => { const a = X.S.ans[it.id]; if (a && !a.ok) row(it.o).missed_questions++; });
+      X.cards.forEach(c => { const s = X.S.cards[c.id]; if (s && s.b <= 1 && c.o !== '—') row(c.o).shaky_cards++; });
+      return Object.values(w).sort((a, b) => (b.missed_questions * 2 + b.shaky_cards) - (a.missed_questions * 2 + a.shaky_cards)).slice(0, 10); } },
+  { name: 'search_material', title: 'Search the material', annotations: RO, description: 'Search the site’s notes, numbers tables, flashcards, practice questions and the student’s own points. Returns the best matches with excerpts. Use before answering factual questions so answers match the site’s material.',
+    inputSchema: OBJ({ query: { type: 'string', description: 'Words to search for, e.g. "occupant load business"' } }, ['query']),
+    run: (X, i) => { const q = String(i.query || '').trim(); if (!q) throw new Error('query is empty'); const r = search(X, q); return r.length ? r : 'Nothing matches. Try fewer or different words, a code section like 1004.5, or an objective like PPD 2.2.'; } },
+  { name: 'get_notes', title: 'Read the notes', annotations: RO, description: 'The full notes for one objective (e.g. "PPD 2.2"), plus the student’s own points on it.',
+    inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.1"' } }, ['objective']),
+    run: (X, i) => { const { o, d, ob } = objIn(i.objective); if (!d || !ob) throw new Error('Use an objective like "PA 4.1".');
+      const key = d + ' ' + ob, out = X.M.heads.filter(h => h.lv === 3 && h.objs.includes(key)).map(h => h.title + '\n' + h.full);
+      return { objective: key, title: X.objTitle(key), notes: out.join('\n\n').slice(0, 12000) || '(no notes section for this objective)', my_points: X.points.filter(p => p.div === d && p.obj === ob).map(p => p.text) }; } },
+  { name: 'practice_questions', title: 'Pick practice questions', annotations: RO, description: 'Practice questions for quizzing, with the correct answers so you can grade. Never show the correct letters or explanation until the student has answered.',
+    inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.1", or "" for any' }, division: { type: 'string', description: 'PA, PPD, PDD or ""' }, count: { type: 'integer', minimum: 1, maximum: 10 }, which: { type: 'string', enum: ['unanswered', 'missed', 'due_mistakes', 'any'] } }, ['count']),
+    run: (X, i) => { let l = X.items.slice(); const { full } = objIn(i.objective), d = String(i.division || '').trim().toUpperCase();
+      if (full && full.includes(' ')) l = l.filter(q => q.o === full); if (d) l = l.filter(q => q.d === d);
+      if (i.which === 'unanswered') l = l.filter(q => !X.S.ans[q.id]); if (i.which === 'missed') l = l.filter(q => X.S.ans[q.id] && !X.S.ans[q.id].ok);
+      if (i.which === 'due_mistakes') { const due = mistDue(X); l = l.filter(q => due.includes(q.id)); }
+      if (!l.length) return 'No questions match. Try which: "any" or a wider objective.';
+      return shuffle(l).slice(0, Math.max(1, Math.min(10, +i.count || 3))).map(q => ({ question_id: q.id, objective: q.o, type: q.t === 'cata' ? 'check all that apply' : 'multiple choice', question: strip(q.s), options: q.opts.map((x, k) => L(k) + '. ' + strip(x)), correct: q.c.map(L), explanation: strip(q.e) })); } },
+  { name: 'record_answer', title: 'Record an answer', annotations: RW, write: true, description: 'Record the student’s answer to a practice question. It updates their score and mistake log exactly like the Practice page. Call once per answer.',
+    inputSchema: OBJ({ question_id: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Letters the student chose, e.g. ["B"]' } }, ['question_id', 'choices']),
+    run: (X, i) => { const it = X.item(String(i.question_id)); if (!it) throw new Error('No question with question_id ' + i.question_id + '.');
+      const sel = [...new Set((i.choices || []).map(x => String(x).trim().toUpperCase().charCodeAt(0) - 65).filter(k => k >= 0 && k < it.opts.length))];
+      if (!sel.length) throw new Error('choices must be option letters like ["B"].');
+      const note = record(X, it.id, sel); return { correct: itemOk(it, sel), correct_answer: it.c.map(L), note }; } },
+  { name: 'mistakes', title: 'List mistakes', annotations: RO, description: 'The student’s mistake log: questions they got wrong, what they chose, the right answer, how often they missed it, when it is due again and their own note. Use to explain mistakes or re-ask them.',
+    inputSchema: OBJ({ which: { type: 'string', enum: ['due', 'open', 'fixed'], description: 'due = due now (default), open = not fixed yet, fixed = learned' }, count: { type: 'integer', minimum: 1, maximum: 20 } }),
+    run: (X, i) => { const w = i.which || 'due', due = mistDue(X);
+      const ids = Object.keys(X.S.mist).filter(id => X.item(id) && (w === 'due' ? due.includes(id) : w === 'fixed' ? X.S.mist[id].fixed : !X.S.mist[id].fixed));
+      return ids.sort((a, b) => X.S.mist[b].n - X.S.mist[a].n).slice(0, Math.max(1, Math.min(20, +i.count || 10))).map(id => { const m = X.S.mist[id], it = X.item(id);
+        return { question_id: id, objective: it.o, question: strip(it.s), options: it.opts.map((x, k) => L(k) + '. ' + strip(x)), last_choice: (m.sel || []).map(L), correct: it.c.map(L), times_missed: m.n, fixed: !!m.fixed, due: m.fixed ? null : whenStr(m.due), note: m.note || '', explanation: strip(it.e) }; }); } },
+  { name: 'due_flashcards', title: 'Pick flashcards', annotations: RO, description: 'Flashcards that are due now (weakest first), then new ones. Show the question, let the student answer, then reveal.',
+    inputSchema: OBJ({ count: { type: 'integer', minimum: 1, maximum: 15 }, objective: { type: 'string' } }, ['count']),
+    run: (X, i) => { const now = Date.now(); let p = X.cards.slice(); const { full } = objIn(i.objective); if (full) p = p.filter(c => full.includes(' ') ? c.o === full : odiv(c.o) === full);
+      const due = p.filter(c => X.S.cards[c.id] && X.S.cards[c.id].due <= now).sort((a, b) => X.S.cards[a.id].b - X.S.cards[b.id].b), nw = shuffle(p.filter(c => !X.S.cards[c.id]));
+      const l = due.concat(nw).slice(0, Math.max(1, Math.min(15, +i.count || 5)));
+      return l.length ? l.map(c => ({ card_id: c.id, deck: c.d, objective: c.o, question: strip(c.q), answer: strip(c.a) })) : 'No cards are due and none are new here. Good work.'; } },
+  { name: 'rate_flashcard', title: 'Rate a flashcard', annotations: RW, write: true, description: 'Save the student’s rating for a flashcard: again (did not know it), shaky (partly), good (knew it). Schedules its next review.',
+    inputSchema: OBJ({ card_id: { type: 'string' }, rating: { type: 'string', enum: ['again', 'shaky', 'good'] } }, ['card_id', 'rating']),
+    run: (X, i) => ({ saved: true, schedule: toolRating(X, String(i.card_id), { again: 1, shaky: 2, good: 3 }[i.rating] || 3) }) },
+  { name: 'add_flashcards', title: 'Add flashcards', annotations: RW, write: true, description: 'Add flashcards to the student’s own material (private to them). Only after they ask for new cards. Returns the new card_ids.',
+    inputSchema: OBJ({ cards: { type: 'array', maxItems: 25, items: OBJ({ deck: { type: 'string' }, objective: { type: 'string', description: 'e.g. "PDD 1.5"' }, question: { type: 'string' }, answer: { type: 'string', description: 'Plain text; "- " bullets and **bold** allowed' } }, ['deck', 'objective', 'question', 'answer']) } }, ['cards']),
+    run: (X, i) => { const ids = [], cc = custom(X.S, 'cards');
+      (i.cards || []).slice(0, 25).forEach(c => { const q = String(c.question || '').trim(), a = String(c.answer || '').trim(); if (!q || !a) return; const ob = objIn(c.objective), id = newUid();
+        cc[id] = { d: String(c.deck || 'My cards').slice(0, 60), o: ob.full || '—', q: oneLine(q), a: md2html(a), qraw: q, araw: a, at: Date.now() }; ids.push(id); });
+      if (!ids.length) throw new Error('No valid cards (each needs question and answer).'); return { added: ids.length, card_ids: ids }; } },
+  { name: 'add_practice_question', title: 'Add a practice question', annotations: RW, write: true, description: 'Add one practice question to the student’s own material. mc has exactly one correct option; cata has two or more.',
+    inputSchema: OBJ({ objective: { type: 'string' }, type: { type: 'string', enum: ['mc', 'cata'] }, question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, correct: { type: 'array', items: { type: 'string' }, description: 'Letters of the correct options' }, explanation: { type: 'string' } }, ['objective', 'type', 'question', 'options', 'correct', 'explanation']),
+    run: (X, i) => { const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD or PDD.');
+      const opts = (i.options || []).map(x => String(x).replace(/^[A-Z][.)]\s*/, '').trim()).filter(Boolean), c = [...new Set((i.correct || []).map(x => String(x).trim().toUpperCase().charCodeAt(0) - 65).filter(k => k >= 0 && k < opts.length))];
+      if (opts.length < 2 || !c.length) throw new Error('Need 2+ options and at least one correct letter.');
+      const id = newUid(); custom(X.S, 'items')[id] = { d: ob.d, o: ob.full, t: i.type === 'cata' || c.length > 1 ? 'cata' : 'mc', s: oneLine(String(i.question)), opts, c, e: String(i.explanation || ''), sraw: String(i.question), eraw: String(i.explanation || ''), at: Date.now() };
+      return { added: 1, question_id: id }; } },
+  { name: 'add_study_point', title: 'Add a study point', annotations: RW, write: true, description: 'Save a short study note to the student’s own material. It also shows under that objective in the site’s notes.',
+    inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.3", or a division like "PPD"' }, text: { type: 'string' } }, ['objective', 'text']),
+    run: (X, i) => { const ob = objIn(i.objective), d = ob.d || 'GEN', t = String(i.text || '').trim(); if (!t) throw new Error('text is empty');
+      const id = newUid(); custom(X.S, 'points')[id] = { div: d, obj: d === 'GEN' ? '' : ob.ob, text: t.slice(0, 4000), at: Date.now() }; return { saved: true, point_id: id }; } },
+  { name: 'remove_my_material', title: 'Remove my material', annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, write: true, description: 'Remove a card, question or point the student added (ids start with "u"), for example to undo something you just added. Never removes shared material.',
+    inputSchema: OBJ({ kind: { type: 'string', enum: ['cards', 'items', 'points'], description: 'cards, items (practice questions) or points' }, id: { type: 'string' } }, ['kind', 'id']),
+    run: (X, i) => { const id = String(i.id || ''), box = (X.S.custom || {})[i.kind]; if (!/^u/.test(id) || !box || !box[id]) throw new Error('No item of yours with that id.'); delete box[id]; return { removed: id }; } },
+  { name: 'set_study_plan', title: 'Save my own study plan', annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, write: true, description: 'Replace the student’s study plan with their own week-by-week plan (only after they agree to it). One entry per calendar week, from/to as YYYY-MM-DD, 4–7 one-sentence tasks each; exam is e.g. "PA exam — Thursday 22 October" in an exam week, otherwise "". Ticks on the standard plan are kept, and use_standard_plan switches back.',
+    inputSchema: OBJ({ summary: { type: 'string' }, weeks: { type: 'array', minItems: 1, maxItems: 40, items: OBJ({ from: { type: 'string' }, to: { type: 'string' }, goal: { type: 'string' }, exam: { type: 'string' }, tasks: { type: 'array', items: { type: 'string' } } }, ['from', 'to', 'goal', 'tasks']) } }, ['summary', 'weeks']),
+    run: (X, i) => { const mon = s => 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ')[+s.slice(5, 7) - 1];
+      const weeks = (i.weeks || []).map(w => ({ f: normD(w.from), t: normD(w.to), w })).filter(x => x.f && x.t && x.f <= x.t && Array.isArray(x.w.tasks) && x.w.tasks.length).map((x, k) => ({
+        w: k + 1, from: x.f, to: x.t, d: +x.f.slice(8) + (x.f.slice(0, 7) === x.t.slice(0, 7) ? '' : ' ' + mon(x.f)) + '–' + +x.t.slice(8) + ' ' + mon(x.t), g: String(x.w.goal || '').slice(0, 200),
+        exam: x.w.exam ? String(x.w.exam).slice(0, 100) : undefined, t: x.w.tasks.map(s => String(s).slice(0, 300)).slice(0, 10) }));
+      if (!weeks.length) throw new Error('No usable weeks: each needs from/to dates as YYYY-MM-DD and at least one task.');
+      X.S.customPlan = { summary: String(i.summary || '').slice(0, 600), weeks, at: Date.now() }; return { saved: true, weeks: weeks.length, first: weeks[0].d, last: weeks[weeks.length - 1].d }; } },
+  { name: 'use_standard_plan', title: 'Go back to the standard plan', annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, write: true, description: 'Remove the student’s own plan and go back to the site’s standard plan. Only when they ask.',
+    inputSchema: OBJ(), run: X => { if (!X.S.customPlan) return 'Already on the standard plan.'; delete X.S.customPlan; return { ok: true }; } },
+  { name: 'tick_plan_task', title: 'Tick a plan task', annotations: RW, write: true, description: 'Mark a study-plan task done or not done, using task_id from study_status.',
+    inputSchema: OBJ({ task_id: { type: 'string' }, done: { type: 'boolean' } }, ['task_id', 'done']),
+    run: (X, i) => { const id = String(i.task_id || ''); if (!/^c?w\d+t\d+$/.test(id)) throw new Error('Unknown task_id.'); if (i.done) X.S.plan[id] = 1; else delete X.S.plan[id]; logAct(X.S); return { ok: true }; } }
+];
+const INSTRUCTIONS = 'This is the student’s ARE Study System (ARE 5.0: PA, PPD and PDD). The tools read and update the same progress the student sees on the study website, so answers, ratings and added material show up there too. ' +
+  'Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Prefer the site’s own material (search_material, get_notes) for facts. ' +
+  'When quizzing, ask one question at a time with lettered options, wait for the student’s reply, then call record_answer before explaining. Never reveal an answer or explanation before the student responds. For flashcards, show the question, wait, reveal the answer, then ask how it went and call rate_flashcard. Keep replies short unless asked for more.';
+
+async function callTool(sub, name, args) {
+  const t = TOOLS.find(x => x.name === name);
+  if (!t) return { content: [{ type: 'text', text: 'Unknown tool ' + name }], isError: true };
+  const M = await material();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await D().get(sub);
+    let S = blankState();
+    if (row && row.data) { try { const p = JSON.parse(row.data); if (p && p.v === 2) S = Object.assign(S, p); } catch (e) { } }
+    const X = study(M, normalize(S));
+    let out;
+    try { out = await t.run(X, args || {}); }
+    catch (e) { return { content: [{ type: 'text', text: 'Error: ' + String(e && e.message || e) }], isError: true }; }
+    if (t.write) {
+      S.at = Date.now();
+      const body = JSON.stringify(S);
+      if (body.length > 350000) return { content: [{ type: 'text', text: 'Error: the student’s saved data is too large to save. They should remove unused items on My material.' }], isError: true };
+      if (!(await D().putProgress(sub, body, row ? row.updatedAt : null))) continue;   // saved elsewhere meanwhile: run again on the newer copy
+    }
+    return { content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out) }] };
+  }
+  return { content: [{ type: 'text', text: 'Error: the progress changed several times at once. Try again.' }], isError: true };
+}
+
+/* ---------- HTTP ---------- */
+const res = (code, body, headers) => ({ statusCode: code, headers: Object.assign({ 'cache-control': 'no-store' }, headers || {}), body: body == null ? '' : (typeof body === 'string' ? body : JSON.stringify(body)) });
+const jres = (code, obj, h) => res(code, obj, Object.assign({ 'content-type': 'application/json' }, h || {}));
+function bodyOf(ev) {
+  const raw = ev.isBase64Encoded ? Buffer.from(ev.body || '', 'base64').toString('utf8') : (ev.body || '');
+  const ct = String((ev.headers || {})['content-type'] || '');
+  if (/json/.test(ct)) { try { return JSON.parse(raw || '{}'); } catch (e) { return null; } }
+  return Object.fromEntries(new URLSearchParams(raw));
+}
+const okRedirect = u => typeof u === 'string' && REDIRECTS.some(r => r.test(u));
+const withQuery = (u, q) => u + (u.includes('?') ? '&' : '?') + new URLSearchParams(q).toString();
+
+function page(title, inner) {
+  return res(200, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title><style>' +
+    ':root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b18;--mut:#6b655c;--line:#e2ddd3;--acc:#b4532a}@media (prefers-color-scheme:dark){:root{--bg:#161513;--card:#201e1b;--ink:#eee9e0;--mut:#a39c90;--line:#35322d;--acc:#e07a4c}}' +
+    '*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:16px}' +
+    'main{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}h1{font-size:20px;margin:0 0 6px}p{color:var(--mut);margin:0 0 18px;font-size:14px}' +
+    'label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}' +
+    '.row{display:flex;gap:8px;margin-top:20px}button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);color:#fff}' +
+    '.err{background:#fbe9e3;color:#8a2c12;border-radius:8px;padding:8px 12px;font-size:14px;margin:0 0 12px}@media (prefers-color-scheme:dark){.err{background:#3a2019;color:#f3b39a}}.small{font-size:12px;margin:16px 0 0}' +
+    '</style></head><body><main>' + inner + '</main></body></html>', { 'content-type': 'text/html; charset=utf-8', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'", 'referrer-policy': 'no-referrer' });
+}
+function signInPage(q, err, email) {
+  const host = (() => { try { return new URL(q.redirect_uri).host; } catch (e) { return '?'; } })();
+  const hidden = ['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'scope', 'resource'].map(k => q[k] != null ? '<input type="hidden" name="' + k + '" value="' + esc(q[k]) + '">' : '').join('');
+  return page('Connect Claude · ARE Study System', '<h1>Connect Claude to your study account</h1><p>Sign in with your ARE Study System account. Claude will be able to see your progress, quiz you, record answers and ratings, and add material to your own collection. You’ll go back to <b>' + esc(host) + '</b>.</p>' +
+    (err ? '<div class="err">' + esc(err) + '</div>' : '') +
+    '<form method="post" action="/oauth/authorize">' + hidden + '<label for="e">Email</label><input id="e" name="email" type="email" autocomplete="username" required value="' + esc(email || '') + '"><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>' +
+    '<div class="row"><button type="submit" name="decision" value="deny" formnovalidate>Cancel</button><button type="submit" name="decision" value="allow" class="pri">Sign in and connect</button></div></form>' +
+    '<p class="small">No account yet? Create one on the study website first. You can disconnect any time in Claude’s connector settings.</p>');
+}
+const errPage = msg => page('Cannot connect', '<h1>This link can’t be used</h1><p>' + esc(msg) + '</p><p>Start again from Claude: Settings, Connectors.</p>');
+function checkAuthz(q) {
+  if (q.response_type !== 'code') return 'This sign-in link is missing its request type.';
+  if (!q.client_id) return 'This sign-in link is missing its client.';
+  if (!okRedirect(q.redirect_uri)) return 'This sign-in link doesn’t lead back to Claude.';
+  if (!q.code_challenge || q.code_challenge_method !== 'S256') return 'This sign-in link is missing its security check (PKCE).';
+  return null;
+}
+async function issue(sub, cid) {
+  const at = rnd(), rt = rnd();
+  await D().put('oauth#at#' + sha(at), JSON.stringify({ sub, cid, exp: nowS() + AT_LIFE }), nowS() + AT_LIFE + 60);
+  await D().put('oauth#rt#' + sha(rt), JSON.stringify({ sub, cid, exp: nowS() + RT_LIFE }), nowS() + RT_LIFE + 60);
+  return jres(200, { access_token: at, token_type: 'Bearer', expires_in: AT_LIFE, refresh_token: rt, scope: 'study' }, { pragma: 'no-cache' });
+}
+const tokErr = (code, error, desc) => jres(code, { error, error_description: desc });
+
+async function mcp(ev, base) {
+  const unauth = (err) => res(401, err ? { error: 'invalid_token' } : { error: 'sign-in required' }, { 'content-type': 'application/json', 'www-authenticate': 'Bearer resource_metadata="' + base + '/.well-known/oauth-protected-resource"' + (err ? ', error="invalid_token"' : '') });
+  const m = String((ev.headers || {}).authorization || '').match(/^Bearer\s+(\S+)$/i);
+  if (!m) return unauth(false);
+  const row = await D().get('oauth#at#' + sha(m[1]));
+  let tok = null; try { tok = row && JSON.parse(row.data); } catch (e) { }
+  if (!tok || tok.exp < nowS()) return unauth(true);
+  const msg = bodyOf(Object.assign({}, ev, { headers: { 'content-type': 'application/json' } }));
+  if (!msg) return jres(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+  const list = Array.isArray(msg) ? msg : [msg], out = [];
+  for (const r of list) {
+    if (!r || r.id === undefined || r.id === null) continue;    // notifications need no answer
+    const reply = x => out.push(Object.assign({ jsonrpc: '2.0', id: r.id }, x));
+    const p = r.params || {};
+    try {
+      if (r.method === 'initialize') reply({ result: { protocolVersion: VERSIONS.includes(p.protocolVersion) ? p.protocolVersion : VERSIONS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'are-study-system', title: 'ARE Study System', version: '1.0.0' }, instructions: INSTRUCTIONS } });
+      else if (r.method === 'ping') reply({ result: {} });
+      else if (r.method === 'tools/list') reply({ result: { tools: TOOLS.map(t => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: Object.assign({ title: t.title }, t.annotations) })) } });
+      else if (r.method === 'tools/call') reply({ result: await callTool(tok.sub, p.name, p.arguments) });
+      else reply({ error: { code: -32601, message: 'Method not found: ' + r.method } });
+    } catch (e) { console.error(e); reply({ error: { code: -32603, message: 'Internal error: ' + String(e && e.message || e).slice(0, 200) } }); }
+  }
+  if (!out.length) return res(202, null);
+  return jres(200, Array.isArray(msg) ? out : out[0]);
+}
+
+exports.handler = async (ev) => {
+  const method = ev.requestContext.http.method, path = (ev.rawPath || '/').replace(/\/+$/, '') || '/';
+  const base = 'https://' + ev.requestContext.domainName;
+  const q = Object.fromEntries(new URLSearchParams(ev.rawQueryString || ''));
+  try {
+    if (method === 'OPTIONS') return res(204, null);   // CORS preflight; API Gateway adds the headers
+    if (path.startsWith('/.well-known/oauth-protected-resource'))
+      return jres(200, { resource: base + '/mcp', authorization_servers: [base], scopes_supported: ['study'], bearer_methods_supported: ['header'], resource_name: 'ARE Study System' });
+    if (path.startsWith('/.well-known/oauth-authorization-server') || path.startsWith('/.well-known/openid-configuration'))
+      return jres(200, { issuer: base, authorization_endpoint: base + '/oauth/authorize', token_endpoint: base + '/oauth/token', registration_endpoint: base + '/oauth/register',
+        response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'], scopes_supported: ['study'] });
+    if (path === '/mcp') {
+      if (method === 'POST') return await mcp(ev, base);
+      return res(405, null, { allow: 'POST' });
+    }
+    if (path === '/oauth/register' && method === 'POST') {
+      const b = bodyOf(ev) || {}, uris = Array.isArray(b.redirect_uris) ? b.redirect_uris : [];
+      if (!uris.length || !uris.every(okRedirect)) return jres(400, { error: 'invalid_redirect_uri', error_description: 'Only Claude’s own sign-in return addresses are accepted.' });
+      const auth = ['client_secret_post', 'client_secret_basic'].includes(b.token_endpoint_auth_method) ? b.token_endpoint_auth_method : 'none';
+      const out = { client_id: 'are-' + crypto.randomBytes(12).toString('hex'), client_id_issued_at: nowS(), client_name: String(b.client_name || 'Claude').slice(0, 100), redirect_uris: uris,
+        grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: auth, scope: 'study' };
+      if (auth !== 'none') { out.client_secret = rnd(); out.client_secret_expires_at = 0; }
+      return jres(201, out);
+    }
+    if (path === '/oauth/authorize' && method === 'GET') {
+      const bad = checkAuthz(q); if (bad) return errPage(bad);
+      return signInPage(q);
+    }
+    if (path === '/oauth/authorize' && method === 'POST') {
+      const f = bodyOf(ev) || {}; f.response_type = 'code';
+      const bad = checkAuthz(f); if (bad) return errPage(bad);
+      const back = x => res(302, null, { location: withQuery(f.redirect_uri, Object.assign(x, f.state != null ? { state: f.state } : {})) });
+      if (f.decision === 'deny') return back({ error: 'access_denied' });
+      let who;
+      try { who = await D().login(String(f.email || '').trim(), String(f.password || '')); }
+      catch (e) {
+        const n = e && e.name;
+        const msg = n === 'NotAuthorizedException' || n === 'UserNotFoundException' ? 'That email and password don’t match an account.' : n === 'UserNotConfirmedException' ? 'Confirm your email on the study website first, then try again.' :
+          n === 'PasswordResetRequiredException' ? 'Reset your password on the study website first.' : n === 'TooManyRequestsException' || n === 'LimitExceededException' ? 'Too many tries. Wait a minute and try again.' : 'Sign-in didn’t work (' + (n || 'error') + '). Try again.';
+        return signInPage(f, msg, f.email);
+      }
+      const code = rnd();
+      await D().put('oauth#code#' + sha(code), JSON.stringify({ sub: who.sub, cid: f.client_id, ru: f.redirect_uri, cc: f.code_challenge, exp: nowS() + CODE_LIFE }), nowS() + CODE_LIFE + 60);
+      return back({ code, iss: base });
+    }
+    if (path === '/oauth/token' && method === 'POST') {
+      const f = bodyOf(ev) || {};
+      let cid = f.client_id;
+      const basic = String((ev.headers || {}).authorization || '').match(/^Basic\s+(\S+)$/i);
+      if (basic) cid = decodeURIComponent(Buffer.from(basic[1], 'base64').toString('utf8').split(':')[0]);
+      if (f.grant_type === 'authorization_code') {
+        const row = f.code && await D().take('oauth#code#' + sha(String(f.code)));
+        const c = row && JSON.parse(row.data);
+        if (!c || c.exp < nowS()) return tokErr(400, 'invalid_grant', 'The code is unknown, used or expired.');
+        if (c.ru !== f.redirect_uri || (cid && c.cid !== cid)) return tokErr(400, 'invalid_grant', 'The code was issued to a different client.');
+        if (!f.code_verifier || sha(String(f.code_verifier)) !== c.cc) return tokErr(400, 'invalid_grant', 'The PKCE check failed.');
+        return await issue(c.sub, c.cid);
+      }
+      if (f.grant_type === 'refresh_token') {
+        const row = f.refresh_token && await D().take('oauth#rt#' + sha(String(f.refresh_token)));
+        const c = row && JSON.parse(row.data);
+        if (!c || c.exp < nowS() || (cid && c.cid !== cid)) return tokErr(400, 'invalid_grant', 'The refresh token is unknown, used or expired.');
+        if (!(await D().userOk(c.sub))) return tokErr(400, 'invalid_grant', 'This account is disabled.');
+        return await issue(c.sub, c.cid);
+      }
+      return tokErr(400, 'unsupported_grant_type', 'Use authorization_code or refresh_token.');
+    }
+    if (path === '/' && method === 'GET') return jres(200, { name: 'ARE Study System connector', mcp: base + '/mcp' });
+    return jres(404, { error: 'not found' });
+  } catch (e) {
+    console.error(e);
+    return jres(500, { error: 'server error' });
+  }
+};
+exports._test = { setDeps: d => { deps = d; }, material, TOOLS };

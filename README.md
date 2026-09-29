@@ -16,15 +16,31 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 
 ## Connect your Claude
 
-Each person can connect **their own** Anthropic API key with the **Connect Claude** button in the top bar. Calls go straight from their browser to the Claude API and are billed to their own Anthropic account. The key stays on that device only: it isn't saved to their study account or sent to this site. With a key connected, they get:
+Everyone uses **their own Claude plan**. There are no API keys, and nothing is billed to the site.
 
-- **Explain with Claude** on wrong answers, mistakes and revealed flashcards
-- **Ask Claude**, a tutor chat panel that knows the current page, card or section
-- **Generate with Claude** on My material, Flashcards and Practice. Drafts go through the study-pack preview before anything is added
-- **Build my own plan with Claude** on the Study plan page, around their exam dates and weak spots. **Back to the standard plan** undoes it
+**On the website**, Claude reaches each person's study account through the **ARE Study System connector**:
 
-On the **claude.ai link** the same features need no API key. They run on the viewer's own claude.ai plan (Pro or Max usage), and claude.ai asks each person to allow it the first time.
+1. Click **Connect Claude** in the top bar. It shows the connector URL and the steps.
+2. In Claude, go to **Settings → Connectors → Add custom connector**. Name it *ARE Study System* and paste the URL. It ends in `/mcp` and is the `ConnectorUrl` output of the `are-accounts` stack.
+3. Click **Connect** and sign in with the same email and password as the website.
+
+In any Claude chat, Claude can then:
+
+- see your plan week, exam dates, due cards, due mistakes and weak spots
+- quiz you and record your answers (they count on the Practice and Mistakes pages)
+- run your due flashcards and save your ratings
+- explain your mistakes
+- add cards, questions and study points to **My material**, and remove the ones it added
+- tick plan tasks, and save your own week-by-week plan
+
+Everything saves to your study account, so the website shows it the next time you open it or switch back to its tab.
+
+The **Explain with Claude**, **Generate with Claude** and **Build my own plan with Claude** buttons on the website open a new Claude chat with the request already typed. The request is also copied to the clipboard, in case the box is empty.
+
+Your Claude plan must allow custom connectors. The connector's code is `aws/connector.js`. `build.ps1` copies it into `aws/are-accounts.yaml`, so updating the stack updates the connector.
+
+**On the claude.ai link**, the features run inside the page on the viewer's claude.ai plan, and claude.ai asks each person to allow it the first time.
 
 ### The chat panel
 
-**Ask Claude** opens a chat docked on the right, similar to Claude in VS Code. You can resize it by dragging its edge, start a new chat, and reopen past chats from the history list. Past chats are saved on your device. Claude sees the page you're on, which you can turn off with the chip above the input. It can also act on the site: search the material, quiz you and record your answers, run your due flashcards and save your ratings, add cards, questions and study points (each with **Undo**), tick plan tasks and open pages. Type `/` for commands: `/today`, `/quiz PA 4.1`, `/cards`, `/mistakes`, `/explain`, `/weak`, `/plan`, `/make`.
+On the claude.ai link, **Ask Claude** opens a chat docked on the right, similar to Claude in VS Code. You can resize it by dragging its edge, start a new chat, and reopen past chats from the history list. Past chats are saved on your device. Claude sees the page you're on, which you can turn off with the chip above the input. It can also act on the site: search the material, quiz you and record your answers, run your due flashcards and save your ratings, add cards, questions and study points (each with **Undo**), tick plan tasks and open pages. Type `/` for commands: `/today`, `/quiz PA 4.1`, `/cards`, `/mistakes`, `/explain`, `/weak`, `/plan`, `/make`.
