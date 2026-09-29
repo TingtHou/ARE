@@ -225,6 +225,14 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .exam{background:var(--surface);border:1px solid var(--rule);border-radius:9px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
 .exam.next{border-color:var(--accent);box-shadow:var(--shadow)}
 .exam .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.exd{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.exdate{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid transparent;border-radius:6px;padding:3px 6px;margin:-3px -6px -3px 0;font-family:var(--sans);font-size:12.5px;color:var(--ink-2);cursor:pointer}
+.exdate:hover,.exdate:focus-visible{border-color:var(--rule);background:var(--surface-2);color:var(--ink)}
+.exdate em{font-style:normal;color:var(--accent-ink);font-weight:600}
+.exdate svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;opacity:.55}
+.exdate:hover svg{opacity:1}
+.exin{font-family:var(--sans);font-size:14px;padding:5px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--ink)}
+@media (max-width:600px){.exin{font-size:16px}}
 .exam .days{font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1}
 .exam .days small{font-size:12px;color:var(--ink-3);font-weight:500;letter-spacing:0;margin-left:4px}
 .exam .dt{font-family:var(--sans);font-size:12.5px;color:var(--ink-2)}
@@ -868,27 +876,49 @@ function cardCounts(list){
 function initToday(){
   const now=new Date(), t=midnight(now), w=curWeek();
   $('#tdEyebrow').textContent=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+(PROF.list.length>1||curProf().name!=='Me'?' · '+curProf().name+'’s desk':'');
-  const next=EXAMS.find(e=>!S.passed[e.d]&&midnight(e.date)>=t);
+  const XS=myExams();
+  const next=XS.find(e=>!S.passed[e.d]&&midnight(e.date)>=t);
   if(MATERR.length)$('#tdExams').insertAdjacentHTML('beforebegin','<div class="rl"><div class="hd">Check the material files</div><ul>'+MATERR.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>');
   if(PW(w)){$('#tdTitle').textContent='Week '+w+' of '+PLAN.length+(next?' · '+Math.round((midnight(next.date)-t)/DAY)+' days to '+next.d:'');$('#tdLede').textContent=PW(w).g;}
   else if(w===0&&PLAN.length){$('#tdTitle').textContent='The plan starts '+fmtDate(pdate(PLAN[0].from),{day:'numeric',month:'long'});}
   else{$('#tdTitle').textContent='Plan complete';$('#tdLede').textContent='All three sittings are behind you. Keep reviewing any division you still need to retake.';}
 
   // exams
-  $('#tdExams').innerHTML=EXAMS.map(e=>{
+  $('#tdExams').innerHTML=XS.map(e=>{
     const days=Math.round((midnight(e.date)-t)/DAY), past=days<0, pass=!!S.passed[e.d];
     const cards=CARDS.filter(c=>cdiv(c)===e.d), cc=cardCounts(cards);
     const its=ITEMS.filter(i=>i.d===e.d); let done=0,ok=0; its.forEach(it=>{const a=S.ans[it.id];if(a){done++;if(a.ok)ok++;}});
     const cardPct=cc.n?cc.strong/cc.n:0, qPct=its.length?ok/its.length:0;
     const ready=Math.round((cardPct*0.5+qPct*0.5)*100);
     return '<div class="exam'+(next===e?' next':'')+(pass?' done':'')+'">'+
-      '<div class="top"><span class="pill '+e.d.toLowerCase()+'">'+e.d+'</span><span class="dt">'+e.label+'</span></div>'+
+      '<div class="top"><span class="pill '+e.d.toLowerCase()+'">'+e.d+'</span><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+(e.edited?' <em>· your date</em>':'')+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
       '<div class="days">'+(pass?'Passed':past?'Sat':days)+(!pass&&!past?'<small>'+(days===1?'day':'days')+'</small>':'')+'</div>'+
       '<div class="dt">'+e.n+' · '+e.items+' items</div>'+
       '<div class="meter2" title="Readiness"><i class="g" style="width:'+ready+'%"></i></div>'+
       '<div class="rd"><span>Readiness '+ready+'%</span><span>'+cc.strong+'/'+cc.n+' cards · '+ok+'/'+its.length+' items</span></div>'+
       '<label class="pass"><input type="checkbox" data-pass="'+e.d+'"'+(pass?' checked':'')+'> I passed this division</label></div>';
   }).join('');
+  /* click a date to change it: a date picker with Save, Plan date and Cancel */
+  $('#tdExams').addEventListener('click',ev=>{
+    const b=ev.target.closest('[data-edit]');
+    if(b){const d=b.dataset.edit,x=XS.find(y=>y.d===d),box=b.parentNode;
+      box.innerHTML='<input type="date" class="exin" id="exin-'+d+'" value="'+ds(x.date)+'" aria-label="'+d+' exam date">'+
+        '<button type="button" class="btn sm pri" data-exsave="'+d+'">Save</button>'+
+        (x.edited?'<button type="button" class="btn sm" data-exreset="'+d+'" title="Back to '+fmtDate(x.plan)+'">Plan date</button>':'')+
+        '<button type="button" class="btn sm" data-excancel="1">Cancel</button>';
+      const inp=$('#exin-'+d);inp.focus();try{inp.showPicker&&inp.showPicker();}catch(_){}
+      inp.addEventListener('keydown',k=>{if(k.key==='Enter')box.querySelector('[data-exsave]').click();if(k.key==='Escape')go('today',{keepScroll:true});});
+      return;}
+    const sv=ev.target.closest('[data-exsave]');
+    if(sv){const d=sv.dataset.exsave,v=$('#exin-'+d).value,x=XS.find(y=>y.d===d);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){$('#exin-'+d).focus();return;}
+      S.examDates=S.examDates||{};
+      if(v===ds(x.plan))delete S.examDates[d];else S.examDates[d]=v;
+      save();go('today',{keepScroll:true});toast(d+' exam date set to '+fmtDate(pdate(v)));return;}
+    const rs=ev.target.closest('[data-exreset]');
+    if(rs){const d=rs.dataset.exreset;if(S.examDates)delete S.examDates[d];save();go('today',{keepScroll:true});toast(d+' exam date back to the plan date');return;}
+    if(ev.target.closest('[data-excancel]'))go('today',{keepScroll:true});
+  });
   $('#tdExams').addEventListener('change',e=>{const cb=e.target.closest('input[data-pass]');if(!cb)return;if(cb.checked)S.passed[cb.dataset.pass]=1;else delete S.passed[cb.dataset.pass];save();go('today',{keepScroll:true});});
 
   // this week
@@ -938,6 +968,12 @@ function initToday(){
   $('#tdHeat').innerHTML=cells.join('');
   $('#tdHeatFrom').textContent=new Date(t.getTime()-27*DAY).toLocaleDateString(undefined,{day:'numeric',month:'short'});
   $('#tdStreak').textContent=streak?streak+'-day streak. Cards reviewed and questions answered per day.':'Cards reviewed and questions answered per day. Study today to start a streak.';
+}
+/* exam dates: the plan's date unless this person set their own; sorted so "next" follows the real order */
+function myExams(){
+  const o=S.examDates||{};
+  return EXAMS.map(e=>{const own=o[e.d]&&!isNaN(pdate(o[e.d]))?pdate(o[e.d]):null,dt=own||e.date;
+    return Object.assign({},e,{date:dt,plan:e.date,label:fmtDate(dt),edited:!!own});}).sort((a,b)=>a.date-b.date);
 }
 function stat(v,l){return '<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>';}
 
