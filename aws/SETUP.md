@@ -50,3 +50,36 @@ Everyone else does the same: they create their own account, and nobody can see a
 - **The claude.ai link** is unaffected. It keeps using your claude.ai sign-in.
 - **To remove everything:** delete the `are-accounts` stack. The progress table is kept on purpose. Delete `are-study-system-progress` in DynamoDB too if you want the data gone.
 - **To switch accounts off again:** empty the four values in `config.js` and push. The site goes back to browser profiles.
+
+# Preview site and the admin Publish button
+
+Every change goes to the `develop` branch first and shows on a **preview site**. The live site (`main`) only changes when an admin clicks **Publish to live site** on the preview.
+
+## 1. Add the preview site in Amplify
+1. Open **AWS Amplify**, then your app (the one serving `main.d27g401yt8k71l.amplifyapp.com`).
+2. Click **Add branch**, choose `develop`, then **Save and deploy**.
+3. The preview appears at `https://develop.d27g401yt8k71l.amplifyapp.com` and updates on every push to `develop`.
+
+## 2. Give the Publish button a GitHub token
+1. Go to GitHub, then **Settings**, then **Developer settings**, then **Fine-grained tokens**, then **Generate new token**.
+   - **Repository access:** only `TingtHou/ARE`.
+   - **Permissions:** Repository permissions, then **Contents: Read and write**.
+   - Copy the token. **Don't paste it into chat or commit it.**
+2. In the AWS Console (region **US East (N. Virginia)**), open **Systems Manager**, then **Parameter Store**, then **Create parameter**.
+   - **Name:** `/are-study-system/github-token`
+   - **Type:** SecureString (keep the default key)
+   - **Value:** the token
+   - Click **Create parameter**.
+
+## 3. Update the stack
+1. Open **CloudFormation**, then **are-accounts**, then **Update**, then **Replace existing template**, and upload the new `aws/are-accounts.yaml`.
+2. **SiteOrigins:** both addresses, comma-separated, no spaces or slashes at the end:
+   `https://main.d27g401yt8k71l.amplifyapp.com,https://develop.d27g401yt8k71l.amplifyapp.com`
+3. Leave the other parameters (GitHubRepo, LiveBranch, PreviewBranch, GitHubTokenParameter) at their defaults. Tick the IAM box, then **Submit**, and wait for **UPDATE_COMPLETE**.
+
+## 4. Make yourself an admin
+1. Open **Cognito**, then **User pools**, then `are-study-system-users`, then **Groups**, then `admin`, then **Add user to group**, and pick your account.
+2. On the preview site, sign out and sign back in, so the new group is in your sign-in.
+3. A **Publish to live site…** button appears in the yellow Preview banner. It lists the changes waiting and asks you to confirm before publishing.
+
+Publishing only moves `main` forward to match `develop`. If `main` ever has a change that `develop` doesn't, it stops and says so instead of overwriting.

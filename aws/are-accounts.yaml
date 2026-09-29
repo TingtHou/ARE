@@ -2,15 +2,34 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   ARE Study System accounts. Email + password sign-in (Amazon Cognito) and a
   small API that stores each person's study progress (API Gateway + Lambda +
-  DynamoDB). After the stack is created, copy the four Outputs into config.js.
+  DynamoDB), plus an admin-only Publish action that moves the live branch to the
+  preview branch on GitHub. After the stack is created, copy the Outputs into config.js.
 
 Parameters:
-  SiteOrigin:
-    Type: String
+  SiteOrigins:
+    Type: CommaDelimitedList
     Default: '*'
     Description: >-
-      Web address allowed to call the API, e.g. https://main.d27g401yt8k71l.amplifyapp.com
-      (no trailing slash). Leave * to allow any site.
+      Web addresses allowed to call the API, comma-separated, no trailing slash, e.g.
+      https://main.d27g401yt8k71l.amplifyapp.com,https://develop.d27g401yt8k71l.amplifyapp.com
+      Use * to allow any site.
+  GitHubRepo:
+    Type: String
+    Default: TingtHou/ARE
+    Description: owner/name of the repository the site deploys from.
+  LiveBranch:
+    Type: String
+    Default: main
+  PreviewBranch:
+    Type: String
+    Default: develop
+  GitHubTokenParameter:
+    Type: String
+    Default: /are-study-system/github-token
+    Description: >-
+      Name of the Systems Manager SecureString parameter holding a GitHub
+      fine-grained token (this repository only, Contents read and write).
+      Create it before using Publish; the stack only reads it.
 
 Resources:
   UserPool:
@@ -130,14 +149,118 @@ Resources:
             return json(405, '{"error":"method not allowed"}');
           };
 
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      Description: People who may publish the preview site to the live site.
+      UserPoolId: !Ref UserPool
+
+  ReleaseFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-github-token
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GitHubTokenParameter}'
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'ssm.${AWS::Region}.amazonaws.com'
+
+  ReleaseFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: are-study-system-release
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ReleaseFunctionRole.Arn
+      Timeout: 15
+      MemorySize: 128
+      Environment:
+        Variables:
+          REPO: !Ref GitHubRepo
+          LIVE: !Ref LiveBranch
+          PREVIEW: !Ref PreviewBranch
+          TOKEN_PARAM: !Ref GitHubTokenParameter
+      Code:
+        ZipFile: |
+          // GET /release  -> commits on the preview branch that the live branch does not have yet
+          // POST /release -> move the live branch to the preview branch's commit (fast-forward only)
+          // Only members of the Cognito group "admin" may call either.
+          const { SSMClient, GetParameterCommand } = require('@aws-sdk/client-ssm');
+          const ssm = new SSMClient({});
+          const { REPO, LIVE, PREVIEW, TOKEN_PARAM } = process.env;
+          let token = null;
+          const json = (code, obj) => ({ statusCode: code, headers: { 'content-type': 'application/json' }, body: JSON.stringify(obj) });
+          const isAdmin = (claims) => {
+            const g = claims && claims['cognito:groups'];
+            const list = Array.isArray(g) ? g : String(g || '').replace(/[\[\]"]/g, '').split(/[\s,]+/);
+            return list.includes('admin');
+          };
+          async function gh(path, init) {
+            if (!token) {
+              const p = await ssm.send(new GetParameterCommand({ Name: TOKEN_PARAM, WithDecryption: true }));
+              token = p.Parameter.Value.trim();
+            }
+            const r = await fetch('https://api.github.com/repos/' + REPO + path, Object.assign({}, init, {
+              headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'are-study-system-release', 'Content-Type': 'application/json' }
+            }));
+            const text = await r.text();
+            let body = null; try { body = text ? JSON.parse(text) : null; } catch (e) { body = { message: text }; }
+            return { status: r.status, body };
+          }
+          exports.handler = async (event) => {
+            const claims = event.requestContext && event.requestContext.authorizer && event.requestContext.authorizer.jwt && event.requestContext.authorizer.jwt.claims;
+            if (!claims || !claims.sub) return json(401, { error: 'Not signed in.' });
+            if (!isAdmin(claims)) return json(403, { error: 'Only admins can publish.' });
+            try {
+              const method = event.requestContext.http.method;
+              if (method === 'GET') {
+                const c = await gh('/compare/' + encodeURIComponent(LIVE) + '...' + encodeURIComponent(PREVIEW));
+                if (c.status !== 200) return json(502, { error: 'GitHub compare failed (' + c.status + '): ' + ((c.body && c.body.message) || '') });
+                return json(200, {
+                  live: LIVE, preview: PREVIEW, ahead: c.body.ahead_by, behind: c.body.behind_by,
+                  commits: (c.body.commits || []).map(x => ({ sha: x.sha.slice(0, 7), message: x.commit.message.split('\n')[0], date: x.commit.author && x.commit.author.date }))
+                });
+              }
+              if (method === 'POST') {
+                const ref = await gh('/git/ref/heads/' + encodeURIComponent(PREVIEW));
+                if (ref.status !== 200) return json(502, { error: 'Could not read ' + PREVIEW + ' (' + ref.status + ').' });
+                const sha = ref.body.object.sha;
+                const up = await gh('/git/refs/heads/' + encodeURIComponent(LIVE), { method: 'PATCH', body: JSON.stringify({ sha, force: false }) });
+                if (up.status === 200) return json(200, { ok: true, sha: sha.slice(0, 7) });
+                if (up.status === 422) return json(409, { error: LIVE + ' has changes that ' + PREVIEW + ' does not. Bring ' + PREVIEW + ' up to date first; nothing was published.' });
+                return json(502, { error: 'GitHub update failed (' + up.status + '): ' + ((up.body && up.body.message) || '') });
+              }
+              return json(405, { error: 'Method not allowed.' });
+            } catch (e) {
+              return json(500, { error: String(e && e.message || e) });
+            }
+          };
+
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: are-study-system-api
       ProtocolType: HTTP
       CorsConfiguration:
-        AllowOrigins: [!Ref SiteOrigin]
-        AllowMethods: [GET, PUT, OPTIONS]
+        AllowOrigins: !Ref SiteOrigins
+        AllowMethods: [GET, PUT, POST, OPTIONS]
         AllowHeaders: [authorization, content-type]
         MaxAge: 3600
 
@@ -195,6 +318,40 @@ Resources:
       FunctionName: !Ref ProgressFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/progress'
+
+  ReleaseIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ReleaseFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetReleaseRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /release
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+      Target: !Sub 'integrations/${ReleaseIntegration}'
+
+  PostReleaseRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /release
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+      Target: !Sub 'integrations/${ReleaseIntegration}'
+
+  ReleaseInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ReleaseFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/release'
 
 Outputs:
   Region:

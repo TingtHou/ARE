@@ -231,6 +231,16 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 @media (max-width:860px){
   #railHide,.railheat{display:none}
 }
+/* ---------- preview banner (develop site) ---------- */
+.previewbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px;padding:9px 12px;border:1px solid var(--warn);background:var(--warn-soft);border-radius:9px;font-family:var(--sans);font-size:13px}
+.previewbar .pvtag{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:2px 6px}
+.previewbar .pvtxt{flex:1 1 280px;min-width:0;color:var(--ink)}
+.pvlist{list-style:none;padding:0;margin:10px 0 14px;max-height:260px;overflow-y:auto;border:1px solid var(--rule);border-radius:8px}
+.pvlist li{padding:7px 10px;border-bottom:1px solid var(--rule-2);font-family:var(--sans);font-size:13px;margin:0}
+.pvlist li:last-child{border-bottom:0}
+.pvlist code{font-family:var(--mono);font-size:11px;color:var(--accent-ink);margin-right:6px}
+.pvlist span{color:var(--ink-3);font-size:11.5px;margin-left:6px}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1840px;justify-self:center}
 @media (min-width:1200px){

@@ -180,7 +180,7 @@ async function boot(){
   profLoad(); loadLocal();
   buildNav(); paintProf();
   await loadNotes();
-  route();
+  route(); paintPreview();
   try{
     if(!window.claude||!window.claude.use)return;
     const [d,u]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
@@ -502,7 +502,7 @@ async function cog(action,body){
 }
 function setSession(res,email){
   const c=jwtClaims(res.IdToken);
-  SESSION={id:res.IdToken,refresh:res.RefreshToken||(SESSION&&SESSION.refresh),exp:Date.now()+(res.ExpiresIn||3600)*1000-120000,sub:c.sub,email:c.email||email||'',name:c.name||''};
+  SESSION={id:res.IdToken,refresh:res.RefreshToken||(SESSION&&SESSION.refresh),exp:Date.now()+(res.ExpiresIn||3600)*1000-120000,sub:c.sub,email:c.email||email||'',name:c.name||'',groups:[].concat(c['cognito:groups']||[])};
   try{localStorage.setItem(LSA,JSON.stringify({refresh:SESSION.refresh,email:SESSION.email,sub:SESSION.sub,name:SESSION.name}));}catch(e){}
 }
 function storedAuth(){try{return JSON.parse(localStorage.getItem(LSA)||'null');}catch(e){return null;}}
@@ -537,7 +537,7 @@ function enterApp(){
   PROF={list:[{id:'u_'+SESSION.sub,name:SESSION.name||SESSION.email.split('@')[0]}],cur:'u_'+SESSION.sub};
   loadLocal(); paintProf();
   $('#authView').hidden=true; $('#shell').hidden=false;
-  route(); pullRemote();
+  route(); pullRemote(); paintPreview();
 }
 async function signOut(){
   clearTimeout(saveT);
@@ -617,6 +617,47 @@ async function doSignIn(){
   const j=await cog('InitiateAuth',{AuthFlow:'USER_PASSWORD_AUTH',ClientId:AC.clientId,AuthParameters:{USERNAME:authMem.email,PASSWORD:authMem.pass}});
   if(!j.AuthenticationResult){const x=new Error('This account needs a step the site does not support yet ('+(j.ChallengeName||'unknown')+').');throw x;}
   setSession(j.AuthenticationResult,authMem.email); authMem.pass=''; enterApp();
+}
+
+/* ================= PREVIEW SITE + ADMIN PUBLISH =================
+   The develop branch deploys to a develop.* address. There a banner marks the preview,
+   and members of the Cognito group "admin" get a button that publishes develop to main. */
+const IS_PREVIEW=/^develop\./i.test(location.hostname)||/[?&]preview\b/.test(location.search);
+const isAdmin=()=>!!(SESSION&&SESSION.groups&&SESSION.groups.includes('admin'));
+function paintPreview(){
+  if(!IS_PREVIEW)return;
+  let bar=$('#previewBar');
+  if(!bar){bar=document.createElement('div');bar.id='previewBar';bar.className='previewbar';bar.setAttribute('role','status');$('#main').insertBefore(bar,$('#view'));}
+  bar.innerHTML='<span class="pvtag">Preview</span><span class="pvtxt">This is the preview version: changes here are not on the live site yet. Your progress is shared with the live site.</span>'+
+    (AUTH_ON&&isAdmin()?'<button type="button" class="btn sm pri" id="pvPublish">Publish to live site…</button>':'');
+  const b=$('#pvPublish'); if(b)b.onclick=openPublish;
+}
+async function releaseApi(method){
+  const t=await idToken(); if(!t)throw new Error('Sign in again to publish.');
+  let r;
+  try{r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/release',{method,headers:{Authorization:'Bearer '+t}});}
+  catch(e){throw new Error('Could not reach the publish service. If this keeps happening, check that this address is in the stack’s SiteOrigins.');}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('The publish service answered '+r.status+'.'));
+  return j;
+}
+function openPublish(){
+  const body=inner=>'<div class="lbl">Admin</div><div class="q">Publish to the live site</div>'+inner;
+  modalForm(body('<p class="small">Checking what is waiting on the preview…</p>'),(a,m,close)=>{if(a==='close')close();});
+  releaseApi('GET').then(rel=>{
+    if(!rel.ahead){modalForm(body('<p>Nothing to publish. The live site already has everything on the preview.</p><div class="row"><button type="button" class="btn" data-a="close">Close</button></div>'),(a,m,close)=>close());return;}
+    const list='<ul class="pvlist">'+rel.commits.slice().reverse().map(c=>'<li><code>'+esc(c.sha)+'</code> '+esc(c.message)+(c.date?' <span>'+esc(new Date(c.date).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))+'</span>':'')+'</li>').join('')+'</ul>';
+    modalForm(body('<p class="small">'+rel.ahead+' change'+(rel.ahead===1?'':'s')+' on <b>'+esc(rel.preview)+'</b> will go live on <b>'+esc(rel.live)+'</b>. Everyone using the live site gets them within about a minute.</p>'+list+
+      (rel.behind?'<div class="aerr">The live site has '+rel.behind+' change'+(rel.behind===1?'':'s')+' that the preview does not. Publishing will stop instead of overwriting them.</div>':'')+
+      '<div class="row" id="pvActs"><button type="button" class="btn pri" data-a="go">Publish '+rel.ahead+' change'+(rel.ahead===1?'':'s')+'</button><button type="button" class="btn" data-a="close">Cancel</button></div>'),
+    async(a,m,close)=>{
+      if(a==='close'){close();return;}
+      if(a==='go'){$('#pvActs',m).innerHTML='<div class="confirm" style="margin:0">Publish to the live site now? This affects everyone who uses it.<div class="row" style="margin-top:8px"><button type="button" class="btn sm pri" data-a="yes">Yes, publish</button><button type="button" class="btn sm" data-a="close">Cancel</button></div></div>';return;}
+      if(a==='yes'){$('#pvActs',m).innerHTML='<p class="small" style="margin:0">Publishing…</p>';
+        try{const r=await releaseApi('POST');$('#pvActs',m).innerHTML='<div class="learned good" style="margin:0"><b>Published '+esc(r.sha)+'.</b> The live site updates in about a minute.</div><div class="row" style="margin-top:10px"><button type="button" class="btn" data-a="close">Done</button></div>';}
+        catch(e){$('#pvActs',m).innerHTML='<div class="aerr" style="margin:0">'+esc(e.message)+'</div><div class="row" style="margin-top:10px"><button type="button" class="btn" data-a="close">Close</button></div>';}}
+    });
+  }).catch(e=>{modalForm(body('<div class="aerr">'+esc(e.message)+'</div><div class="row"><button type="button" class="btn" data-a="close">Close</button></div>'),(a,m,close)=>close());});
 }
 
 /* a dialog that stays open: onAct(action, modalEl, close) for [data-a] clicks, onSubmit(form, modalEl, close) for forms */
