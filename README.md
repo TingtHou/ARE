@@ -13,3 +13,14 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 
 - `develop` gets every change first and deploys to the preview site.
 - `main` is the live site. It only moves when an admin clicks **Publish** on the preview site.
+
+## Connect your Claude
+
+Each person can connect **their own** Anthropic API key with the **Connect Claude** button in the top bar. Calls go straight from their browser to the Claude API and are billed to their own Anthropic account. The key stays on that device only: it isn't saved to their study account or sent to this site. With a key connected, they get:
+
+- **Explain with Claude** on wrong answers, mistakes and revealed flashcards
+- **Ask Claude**, a tutor chat panel that knows the current page, card or section
+- **Generate with Claude** on My material, Flashcards and Practice. Drafts go through the study-pack preview before anything is added
+- **Build my own plan with Claude** on the Study plan page, around their exam dates and weak spots. **Back to the standard plan** undoes it
+
+These features only work on the website (GitHub/AWS), not inside the claude.ai viewer, which blocks outside network calls.

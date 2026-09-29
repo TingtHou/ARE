@@ -273,6 +273,39 @@ h3:hover .addpt,.addpt:focus-visible{opacity:1}
 .impv ul{margin:6px 0 8px;padding-left:18px}
 #modal:has(#imText),#modal:has(#apText),#modal:has(#exText){width:min(760px,calc(100vw - 32px))}
 
+/* ---------- Claude ---------- */
+.aibtn{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--rule);border-radius:99px;background:var(--surface);cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--ink-2)}
+.aibtn svg{width:15px;height:15px;fill:currentColor}
+.aibtn:hover{border-color:var(--accent);color:var(--ink)}
+.aibtn.on{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 45%,var(--rule))}
+.aibox{margin-top:12px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--rule));border-radius:10px;background:var(--accent-soft);font-size:15px}
+.aibox p:last-child,.aibox ul:last-child{margin-bottom:0}
+.aihd{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-family:var(--sans)}
+.aik{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink)}
+.ait{font-size:12.5px;color:var(--ink-2);flex:1 1 auto}
+.aifoot:not(:empty){margin-top:8px}
+.fcai{margin-top:10px;text-align:center}
+.plbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:10px 12px;border:1px solid var(--rule);border-radius:9px;background:var(--surface)}
+.plbar .small{flex:1 1 240px;color:var(--ink-2)}
+.plprev{max-height:280px;overflow-y:auto;margin:6px 0 0;padding-left:20px}
+.plprev li{margin-bottom:4px}
+#chat{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);z-index:45;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--rule);box-shadow:-12px 0 40px -24px rgba(0,0,0,.45);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#chat[hidden]{display:none}
+.chhd{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--rule);font-family:var(--sans)}
+.chhd b{font-size:15px}
+.chhd .small{flex:1 1 auto;color:var(--ink-3)}
+#chatLog{flex:1 1 auto;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.cm{max-width:92%;padding:9px 12px;border-radius:12px;font-size:14.5px;line-height:1.5}
+.cm p:last-child,.cm ul:last-child,.cm ol:last-child{margin-bottom:0}
+.cm.user{align-self:flex-end;background:var(--accent);color:var(--paper);font-family:var(--sans);font-size:14px}
+.cm.assistant{align-self:flex-start;background:var(--surface-2);border:1px solid var(--rule-2)}
+.cmempty{color:var(--ink-2);font-family:var(--sans);font-size:13.5px;padding:8px 2px}
+#chatForm{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--rule)}
+#chatIn{flex:1 1 auto;min-width:0;resize:none;font-family:var(--sans);font-size:15px;padding:9px 11px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-2);color:var(--ink)}
+#chatIn:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+@media (min-width:1100px){body.chaton #shell{margin-right:min(420px,100vw)}}
+@media (max-width:600px){.aibtn span{display:none}.aibtn{padding:7px}#chatIn{font-size:16px}}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1840px;justify-self:center}
 @media (min-width:1200px){
@@ -366,6 +399,7 @@ h3:hover .addpt,.addpt:focus-visible{opacity:1}
       <div id="results" hidden></div>
     </div>
     <div class="sync" id="sync"><b></b><span>This device</span></div>
+    <button type="button" class="aibtn" id="aiBtn" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><span>Connect Claude</span></button>
     <button type="button" class="profbtn" id="profBtn" aria-haspopup="dialog"><span class="av">?</span></button>
   </div>
   <div id="view"><p class="lede">Loading your study material…</p></div>
@@ -377,6 +411,11 @@ h3:hover .addpt,.addpt:focus-visible{opacity:1}
     <div id="authBody"></div>
   </div>
 </div>
+<aside id="chat" hidden aria-label="Study tutor">
+  <div class="chhd"><b>Ask Claude</b><span class="small">sees the page you are on</span><button type="button" class="lnk" id="chatSet">Settings</button><button type="button" class="lnk" id="chatClear">Clear</button><button type="button" class="closebtn" id="chatClose" aria-label="Close">&#10005;</button></div>
+  <div id="chatLog" aria-live="polite"></div>
+  <form id="chatForm"><textarea id="chatIn" rows="2" placeholder="Ask about this page, or say &quot;quiz me&quot;" aria-label="Message to Claude"></textarea><button type="submit" class="btn pri" id="chatSend">Send</button></form>
+</aside>
 <div id="scrim" hidden></div>
 <div id="modal" role="dialog" aria-modal="true" hidden></div>
 
