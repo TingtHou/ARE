@@ -1,0 +1,1035 @@
+<script>
+(function(){
+'use strict';
+const $=(s,r)=>(r||document).querySelector(s), $$=(s,r)=>Array.from((r||document).querySelectorAll(s));
+const view=$('#view'), nav=$('#nav');
+const DAY=864e5, MIN=6e4;
+
+const PAGES=[
+ {id:'today',g:'Study',n:'Today',i:'NOW'},
+ {id:'cards',g:'Study',n:'Flashcards',i:'SRS'},
+ {id:'practice',g:'Study',n:'Practice',i:'Q'},
+ {id:'mistakes',g:'Study',n:'Mistakes',i:'ERR'},
+ {id:'plan',g:'Study',n:'Study plan',i:'14w'},
+ {id:'overview',g:'Notes',n:'Overview',i:'00'},
+ {id:'objectives',g:'Notes',n:'Objective map',i:'01'},
+ {id:'pa',g:'Notes',n:'Programming & Analysis',i:'PA'},
+ {id:'ppd',g:'Notes',n:'Planning & Design',i:'PPD'},
+ {id:'pdd',g:'Notes',n:'Development & Docs',i:'PDD'},
+ {id:'numbers',g:'Notes',n:'Numbers',i:'#'}
+];
+const NOTE_PAGES=['overview','objectives','pa','ppd','pdd','numbers'];
+const DIVS=['PA','PPD','PDD'];
+
+/* ---------- material, loaded from material/*.js ---------- */
+const A=window.ARE||{};
+const pdate=s=>{const p=String(s||'').split('-').map(Number);return new Date(p[0],(p[1]||1)-1,p[2]||1);};
+const fmtDate=(d,o)=>d.toLocaleDateString(undefined,o||{weekday:'short',day:'numeric',month:'short'});
+const CARDS=(A.cards||[]).filter(c=>c&&c.id!=null&&c.q&&c.a).map(c=>Object.assign({},c,{id:String(c.id),d:c.d||'Other',o:c.o||'—'}));
+const ITEMS=(A.questions||[]).filter(q=>q&&q.id!=null&&q.s&&Array.isArray(q.opts)&&Array.isArray(q.c)).map(q=>Object.assign({},q,{id:String(q.id),t:q.t==='cata'?'cata':'mc',e:q.e||''}));
+const PLAN=(A.plan||[]).slice().sort((a,b)=>a.w-b.w);
+const WEIGHTS=A.weights||{};
+const EXAMS=(A.exams||[]).map(e=>{const dt=pdate(e.date);return {d:e.d,n:e.name||e.d,date:dt,items:e.items||'',label:fmtDate(dt)};});
+const ITEM_MAP={}; ITEMS.forEach(it=>{ITEM_MAP[it.id]=it;});
+const ITEM=id=>ITEM_MAP[id];
+const PW=w=>PLAN.find(x=>x.w===w);
+/* problems in the material files, shown on Today so edits are easy to check */
+const MATERR=(()=>{
+  const out=[], seen=(list,file)=>{const s={};list.forEach(x=>{if(s[x.id])out.push(file+': id \''+x.id+'\' is used twice');s[x.id]=1;});};
+  if(!A.cards)out.push('material/cards.js did not load — flashcards are missing');
+  if(!A.questions)out.push('material/questions.js did not load — practice questions are missing');
+  if(!A.plan)out.push('material/plan.js did not load — plan and exam dates are missing');
+  seen(CARDS,'cards.js'); seen(ITEMS,'questions.js');
+  (A.cards||[]).forEach((c,i)=>{if(!c||c.id==null||!c.q||!c.a)out.push('cards.js: card #'+(i+1)+' is missing id, q or a and was skipped');});
+  (A.questions||[]).forEach((q,i)=>{if(!q||q.id==null||!q.s||!Array.isArray(q.opts)||!Array.isArray(q.c))out.push('questions.js: question #'+(i+1)+' is missing id, s, opts or c and was skipped');});
+  ITEMS.forEach(q=>{if(q.c.some(k=>k<0||k>=q.opts.length))out.push('questions.js: '+q.id+' has a correct answer number outside its options (count from 0)');
+    if(q.t==='mc'&&q.c.length!==1)out.push('questions.js: '+q.id+' is multiple choice but lists '+q.c.length+' correct answers — use t:\'cata\' or one answer');
+    if(!DIVS.includes(q.d))out.push('questions.js: '+q.id+' has division \''+q.d+'\' — use PA, PPD or PDD');});
+  EXAMS.forEach(e=>{if(isNaN(e.date))out.push('plan.js: exam '+e.d+' has an unreadable date — use YYYY-MM-DD');});
+  PLAN.forEach(w=>{if(isNaN(pdate(w.from))||isNaN(pdate(w.to)))out.push('plan.js: week '+w.w+' needs from/to dates as YYYY-MM-DD');});
+  return out;
+})();
+const INT=[10*MIN,1*DAY,3*DAY,7*DAY,16*DAY,35*DAY]; // box → next interval
+const BOXNAME=['learning','shaky','review','strong','strong','mastered'];
+
+/* ---------- helpers ---------- */
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const strip=h=>{const d=document.createElement('div');d.innerHTML=h;return d.textContent.replace(/\s+/g,' ').trim();};
+const pad=n=>String(n).padStart(2,'0');
+const ds=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const midnight=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+const ckey=c=>c.id;
+const odiv=o=>{const p=(o||'').split(' ')[0];return DIVS.includes(p)?p:null;};
+const cdiv=c=>odiv(c.o)||(c.d.split(' ')[0]);
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const DECKS=[...new Set(CARDS.map(c=>c.d))];
+async function loadNotes(){
+  const got=await Promise.all(NOTE_PAGES.map(id=>fetch('material/notes/'+id+'.html',{cache:'no-cache'}).then(r=>r.ok?r.text():null).catch(()=>null)));
+  NOTE_PAGES.forEach((id,i)=>{
+    const t=document.createElement('template'); t.id='tpl-'+id;
+    t.innerHTML=got[i]!=null?got[i]:'<h1 class="t">This page did not load</h1><p class="lede">material/notes/'+id+'.html could not be read. If you opened the file straight from your computer, open the published link instead; browsers block a local page from reading its own folder.</p>';
+    if(got[i]==null)MATERR.push('material/notes/'+id+'.html did not load');
+    document.body.appendChild(t);
+  });
+}
+const itemOk=(it,sel)=>sel.length===it.c.length&&sel.every(i=>it.c.includes(i));
+
+/* ---------- state + sync ---------- */
+const LS='are_study_system_v1';
+const blankState=()=>({v:2,at:0,cards:{},ans:{},plan:{},passed:{},log:{},mist:{},cardMiss:{},deck:'',fcMode:'due',qdiv:'',qmode:'all'});
+let S=blankState();
+
+/* ---------- profiles: separate progress per person on this browser ---------- */
+const LSP='are_profiles_v1';
+let PROF={list:[{id:'p0',name:'Me'}],cur:'p0'};
+function profLoad(){try{const r=localStorage.getItem(LSP);if(r){const p=JSON.parse(r);if(p&&Array.isArray(p.list)&&p.list.length)PROF=p;}}catch(e){}if(!PROF.list.some(x=>x.id===PROF.cur))PROF.cur=PROF.list[0].id;}
+function profSave(){try{localStorage.setItem(LSP,JSON.stringify(PROF));}catch(e){}}
+const curProf=()=>PROF.list.find(x=>x.id===PROF.cur)||PROF.list[0];
+const lsKey=id=>id==='p0'?LS:LS+':'+id;           // the first profile keeps the original key, so earlier progress stays
+const dbPath=id=>'data/users/'+uid+'/'+(id==='p0'?'progress':'progress-'+id);
+const initials=n=>(String(n||'?').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2)||'?').toUpperCase();
+const MGAP=[1*DAY,3*DAY,7*DAY]; // mistake re-ask gaps: after a miss, then after each on-time correct answer
+/* backfill: any wrong answer without a log entry becomes a mistake due now */
+function normalize(){
+  S.mist=S.mist||{}; S.cardMiss=S.cardMiss||{};
+  // progress saved before cards/questions had ids: cards were keyed by deck|question, questions by position
+  const legacy={}; CARDS.forEach(c=>{legacy[c.d+'|'+c.q.slice(0,60)]=c.id;});
+  ['cards','cardMiss'].forEach(f=>Object.keys(S[f]).forEach(k=>{const n=legacy[k];if(n&&n!==k){if(!S[f][n])S[f][n]=S[f][k];delete S[f][k];}}));
+  ['ans','mist'].forEach(f=>Object.keys(S[f]).forEach(k=>{if(/^\d+$/.test(k)){if(!S[f]['q'+k])S[f]['q'+k]=S[f][k];delete S[f][k];}}));
+  Object.keys(S.ans).forEach(i=>{const a=S.ans[i];if(a&&!a.ok&&a.sel&&a.sel.length&&!S.mist[i])S.mist[i]={n:1,sel:a.sel,at:a.at||Date.now(),due:Date.now(),stage:0,fixed:false,note:''};});
+}
+let db=null, uid=null, saveT=null, synced=false, curPage=null;
+function lsLoad(id){try{const r=localStorage.getItem(lsKey(id||PROF.cur));return r?JSON.parse(r):null;}catch(e){return null;}}
+function lsSave(){try{localStorage.setItem(lsKey(PROF.cur),JSON.stringify(S));}catch(e){}}
+function setSync(t){const el=$('#sync');el.classList.toggle('on',synced);$('span',el).textContent=t||(synced?'Synced':'This device');}
+/* Autosave: every change is written to this browser at once; the account copy follows ~1 s later.
+   Unsent changes are retried (30 s, then up to every 5 min), sent as soon as the connection
+   returns, and sent immediately when the tab is hidden or closed. */
+let dirty=false, pushing=false, retryT=null, retryGap=30000;
+let SYNCERR=null;/* keep the last failed sync call so the account dialog can say exactly what went wrong */function noteSyncErr(method,status,text){  SYNCERR={at:Date.now(),method,status,text:String(text||'').slice(0,300)};  try{console.warn('ARE sync failed',SYNCERR);}catch(_){}  const e=new Error('sync '+status);e.sync=true;return e;}function syncErrText(){  if(!SYNCERR)return '';const s=SYNCERR;  const why=s.status===0?'The browser could not reach the progress service (blocked or no connection).':s.status===-1?'The sign-in could not be refreshed. Sign out and sign in again.':s.status===401||s.status===403?'The progress service did not accept your sign-in ('+s.status+').':s.status>=500?'The progress service had an error ('+s.status+').':'The progress service answered '+s.status+'.';  return why+' '+s.method+' at '+new Date(s.at).toLocaleTimeString()+(s.text?' — '+s.text:'');}
+function save(){
+  S.at=Date.now(); lsSave(); dirty=true;
+  clearTimeout(saveT);
+  saveT=setTimeout(push,900);
+}
+const canPush=()=>AUTH_ON?!!SESSION:!!(db&&uid);
+async function push(opts){
+  clearTimeout(saveT); clearTimeout(retryT);
+  if(!dirty)return;
+  if(!canPush()){setSync();return;}
+  if(pushing){saveT=setTimeout(push,900);return;}
+  pushing=true; const at=S.at, body=JSON.stringify(S);
+  try{
+    if(AUTH_ON){
+      const t=await idToken(); if(!t)throw noteSyncErr('PUT',-1,'could not refresh the sign-in');
+      const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body,keepalive:!!(opts&&opts.leaving)&&body.length<60000});
+      if(!r.ok){const txt=await r.text().catch(()=>'');throw noteSyncErr('PUT',r.status,txt);}
+    } else {
+      await db.doc(dbPath(PROF.cur)).set({v:2,data:S});
+    }
+    if(S.at===at)dirty=false;           // a newer change made meanwhile stays queued
+    synced=true; retryGap=30000;
+    if(!(opts&&opts.leaving)){setSync('Saved');setTimeout(()=>setSync(),1800);}
+  }catch(e){
+    if(AUTH_ON&&!e.sync)noteSyncErr('PUT',0,String(e&&e.message||e)); synced=false; setSync(AUTH_ON?'Offline · saved here':'This device only');
+    retryT=setTimeout(push,retryGap); retryGap=Math.min(retryGap*2,300000);
+  }finally{pushing=false; if(dirty&&S.at!==at)saveT=setTimeout(push,900);}
+}
+window.addEventListener('online',()=>{if(dirty)push();});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'){if(dirty)push({leaving:true});}
+  else if(!dirty&&canPush()&&document.getElementById('shell')&&!$('#shell').hidden)pullRemote(); // back to the tab: pick up work from other devices
+});
+window.addEventListener('pagehide',()=>{lsSave();if(dirty)push({leaving:true});});
+function logAct(){
+  const k=ds(new Date()); S.log[k]=(S.log[k]||0)+1;
+  const cut=ds(new Date(Date.now()-90*DAY)); Object.keys(S.log).forEach(d=>{if(d<cut)delete S.log[d];});
+  paintRailHeat();
+}
+function loadLocal(){S=blankState();const l=lsLoad();if(l&&l.v===2)S=Object.assign(S,l);normalize();}
+/* pull the signed-in account's copy of the current profile, keep whichever is newer */
+async function pullRemote(){
+  if(AUTH_ON){
+    if(!SESSION||SESSION.offline){synced=false;setSync('Offline · saved here');return;}
+    try{
+      const rem=await api('GET');
+      if(rem&&rem.v===2&&(rem.at||0)>(S.at||0)){S=Object.assign(blankState(),rem);normalize();lsSave();route(true);}
+      else if(S.at&&(!rem||!rem.at||rem.at<S.at)){dirty=true;push();}
+      synced=true; setSync();
+      if(!rem&&!S.at&&legacyProfiles().length)openAccount('Welcome. This browser has study progress from before accounts — you can bring it into your account below.');
+    }catch(e){synced=false;setSync('Offline · saved here');}
+    return;
+  }
+  if(!db||!uid)return;
+  try{
+    const snap=await db.doc(dbPath(PROF.cur)).get();
+    const rem=snap&&snap.exists?snap.data():null;
+    if(rem&&rem.data&&(rem.data.at||0)>(S.at||0)){S=Object.assign(blankState(),rem.data);normalize();lsSave();route(true);}
+    else if(S.at&&(!rem||!rem.data||!rem.data.at||rem.data.at<S.at)){dirty=true;push();}
+    synced=true; setSync();
+  }catch(e){synced=false;setSync('This device only');}
+}
+async function boot(){
+  if(AUTH_ON){
+    $('#shell').hidden=true;
+    buildNav(); await loadNotes();
+    const ok=await resumeSession();
+    if(ok)enterApp(); else showAuth('signin');
+    return;
+  }
+  profLoad(); loadLocal();
+  buildNav(); paintProf();
+  await loadNotes();
+  route();
+  try{
+    if(!window.claude||!window.claude.use)return;
+    const [d,u]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
+    if(!d||!u)return;
+    const id=await u.id(); if(!id)return;
+    db=d; uid=id;
+    await pullRemote();
+  }catch(e){synced=false;setSync('This device only');}
+}
+function switchProf(id){
+  clearTimeout(saveT); lsSave();
+  PROF.cur=id; profSave(); loadLocal(); paintProf();
+  go(curPage||'today'); toast('Switched to '+curProf().name);
+  pullRemote();
+}
+function toast(t){setSync(t);clearTimeout(toast._t);toast._t=setTimeout(()=>setSync(),2400);}
+function paintProf(){
+  const b=$('#profBtn'),p=curProf();
+  b.innerHTML='<span class="av">'+esc(initials(p.name))+'</span><span class="pn">'+esc(p.name)+'</span>';
+  b.title='Studying as '+p.name+' — switch or add a person';
+}
+/* who is studying: switch, add, rename, remove, export/import */
+function openProfiles(msg){
+  const rows=PROF.list.map(p=>{const st=p.id===PROF.cur?S:(lsLoad(p.id)||{});const n=Object.keys(st.cards||{}).length,a=Object.keys(st.ans||{}).length;
+    return '<div class="prow'+(p.id===PROF.cur?' on':'')+'"><button type="button" class="pick" data-a="use:'+p.id+'"><span class="av">'+esc(initials(p.name))+'</span><span><b>'+esc(p.name)+'</b><small>'+n+' card'+(n===1?'':'s')+' rated · '+a+' question'+(a===1?'':'s')+' answered'+(p.id===PROF.cur?' · studying now':'')+'</small></span></button>'+
+      '<button type="button" class="lnk" data-a="ren:'+p.id+'">Rename</button>'+(PROF.list.length>1?'<button type="button" class="lnk" data-a="del:'+p.id+'" style="color:var(--flag)">Remove</button>':'')+'</div>';}).join('');
+  modalForm('<div class="lbl">Who is studying?</div><div class="q">Profiles</div><p class="small" style="margin-top:-6px">Each person gets separate flashcard ratings, answers, mistakes and plan checkboxes. Profiles are kept in this browser'+(db&&uid?' and in your claude.ai account':'')+'.</p>'+
+    (msg?'<div class="learned good" style="margin:0 0 10px">'+msg+'</div>':'')+
+    '<div class="plist">'+rows+'</div>'+
+    '<form class="padd" id="pAdd"><input id="pName" maxlength="40" placeholder="Add a person — type a name" aria-label="New person\'s name" autocomplete="off"><button type="submit" class="btn pri">Add</button></form>'+
+    '<details class="pio"><summary>Move progress to another device or person</summary>'+
+      '<p class="small">Copy the code on one device, then paste it here on the other. Importing replaces the progress of the profile you are studying as.</p>'+
+      '<div class="row"><button type="button" class="btn sm" data-a="exp">Copy my progress code</button></div>'+
+      '<textarea id="pCode" rows="3" placeholder="Paste a progress code here" aria-label="Progress code"></textarea>'+
+      '<div class="row"><button type="button" class="btn sm" data-a="imp">Import into '+esc(curProf().name)+'</button></div></details>'+
+    '<div class="row" style="margin-top:14px"><button type="button" class="btn" data-a="close">Done</button></div>',
+  (a,m,close)=>{
+    const [act,id]=a.split(':');
+    if(act==='use'){close();if(id!==PROF.cur)switchProf(id);return;}
+    if(act==='close'){close();return;}
+    if(act==='ren'){const p=PROF.list.find(x=>x.id===id);const row=m.querySelector('[data-a="ren:'+id+'"]').closest('.prow');
+      row.innerHTML='<form class="padd" style="flex:1;margin:0" data-ren="'+id+'"><input maxlength="40" value="'+esc(p.name)+'" aria-label="New name"><button type="submit" class="btn sm pri">Save</button></form>';$('input',row).focus();$('input',row).select();return;}
+    if(act==='del'){const p=PROF.list.find(x=>x.id===id);const row=m.querySelector('[data-a="del:'+id+'"]').closest('.prow');
+      row.insertAdjacentHTML('afterend','<div class="confirm">Remove <b>'+esc(p.name)+'</b> and all their progress on this browser? This cannot be undone.<div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-a="delyes:'+id+'" style="background:var(--flag);border-color:var(--flag);color:#fff">Remove</button><button type="button" class="btn sm" data-a="delno">Keep</button></div></div>');return;}
+    if(act==='delno'){close();openProfiles();return;}
+    if(act==='delyes'){const p=PROF.list.find(x=>x.id===id);PROF.list=PROF.list.filter(x=>x.id!==id);try{localStorage.removeItem(lsKey(id));}catch(e){}
+      if(db&&uid){db.doc(dbPath(id)).delete().catch(()=>{});}
+      profSave(); close(); if(PROF.cur===id)switchProf(PROF.list[0].id); openProfiles('Removed '+esc(p.name)+'.');return;}
+    if(act==='exp'){const code='ARE1.'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));const ta=$('#pCode',m);ta.value=code;
+      const done=()=>toast('Progress code copied');
+      try{navigator.clipboard.writeText(code).then(done,()=>{ta.select();toast('Select the code and copy it');});}catch(e){ta.select();toast('Select the code and copy it');}return;}
+    if(act==='imp'){const raw=$('#pCode',m).value.trim();
+      try{if(!raw.startsWith('ARE1.'))throw 0;const data=JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));if(!data||data.v!==2)throw 0;
+        S=Object.assign(blankState(),data);normalize();save();close();go(curPage||'today');toast('Progress imported into '+curProf().name);}
+      catch(e){$('#pCode',m).insertAdjacentHTML('afterend','<p class="small" style="color:var(--flag);margin:6px 0 0">That code could not be read. Copy the whole code, starting with ARE1.</p>');}
+      return;}
+  },
+  (form,m,close)=>{
+    if(form.id==='pAdd'){const name=$('#pName',m).value.trim();if(!name){$('#pName',m).focus();return;}
+      const id='p'+Date.now().toString(36);PROF.list.push({id,name:name.slice(0,40)});profSave();close();switchProf(id);return;}
+    if(form.dataset.ren){const p=PROF.list.find(x=>x.id===form.dataset.ren);const v=$('input',form).value.trim();if(v)p.name=v.slice(0,40);profSave();paintProf();close();openProfiles();}
+  });
+}
+
+/* ---------- nav / routing ---------- */
+function buildNav(){
+  let g=null,h='';
+  PAGES.forEach(p=>{if(p.g!==g){g=p.g;h+='<div class="navgrp">'+g+'</div>';}h+='<button type="button" data-p="'+p.id+'"><i>'+p.i+'</i><span>'+p.n+'</span></button>';});
+  nav.innerHTML=h;
+  nav.addEventListener('click',e=>{const b=e.target.closest('button[data-p]');if(b)go(b.dataset.p);});
+}
+function go(id,opts){
+  opts=opts||{};
+  if(!PAGES.some(p=>p.id===id))id='today';
+  stopTimer();
+  curPage=id;
+  $$('#nav button').forEach(b=>b.setAttribute('aria-current',String(b.dataset.p===id)));
+  view.innerHTML='';
+  const tpl=$('#tpl-'+id); if(tpl)view.appendChild(tpl.content.cloneNode(true));
+  if(location.hash.slice(1)!==id){try{history.replaceState(null,'','#'+id);}catch(e){}}
+  if(!opts.keepScroll)window.scrollTo(0,0);
+  paintRailHeat();
+  if(id==='today')initToday();
+  else if(id==='cards')initCards(opts);
+  else if(id==='practice')initPractice(opts);
+  else if(id==='mistakes')initMistakes();
+  else if(id==='plan')initPlan();
+  else initNotes(id);
+}
+function route(keep){go((location.hash||'').slice(1)||'today',{keepScroll:keep});}
+window.addEventListener('hashchange',()=>{const id=(location.hash||'').slice(1);if(id&&id!==curPage)go(id);});
+
+/* ---------- plan helpers ---------- */
+function curWeek(){const t=midnight(new Date());if(!PLAN.length||t<pdate(PLAN[0].from))return 0;for(const w of PLAN){if(t<=pdate(w.to))return w.w;}return PLAN.length+1;}
+const taskId=(w,i)=>'w'+w+'t'+i;
+const isExamTask=t=>/^(SATURDAY|TUESDAY|THURSDAY)/.test(t);
+function planTotals(){let t=0;PLAN.forEach(w=>t+=w.t.length);return {total:t,done:Object.keys(S.plan).length};}
+
+/* ---------- card helpers ---------- */
+function cardPool(){
+  const d=S.deck;
+  if(!d)return CARDS;
+  if(d.startsWith('div:')){const v=d.slice(4);return CARDS.filter(c=>cdiv(c)===v);}
+  return CARDS.filter(c=>c.d===d);
+}
+function cstate(c){return S.cards[ckey(c)]||null;}
+function cardCounts(list){
+  const now=Date.now();let nw=0,due=0,strong=0,learn=0;
+  list.forEach(c=>{const s=cstate(c);if(!s){nw++;return;}if(s.due<=now)due++;if(s.b>=3)strong++;else learn++;});
+  return {n:list.length,nw,due,strong,learn};
+}
+
+/* ================= TODAY ================= */
+function initToday(){
+  const now=new Date(), t=midnight(now), w=curWeek();
+  $('#tdEyebrow').textContent=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+(PROF.list.length>1||curProf().name!=='Me'?' · '+curProf().name+'’s desk':'');
+  const XS=myExams();
+  const next=XS.find(e=>!S.passed[e.d]&&midnight(e.date)>=t);
+  if(MATERR.length)$('#tdExams').insertAdjacentHTML('beforebegin','<div class="rl"><div class="hd">Check the material files</div><ul>'+MATERR.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>');
+  if(PW(w)){$('#tdTitle').textContent='Week '+w+' of '+PLAN.length+(next?' · '+Math.round((midnight(next.date)-t)/DAY)+' days to '+next.d:'');$('#tdLede').textContent=PW(w).g;}
+  else if(w===0&&PLAN.length){$('#tdTitle').textContent='The plan starts '+fmtDate(pdate(PLAN[0].from),{day:'numeric',month:'long'});}
+  else{$('#tdTitle').textContent='Plan complete';$('#tdLede').textContent='All three sittings are behind you. Keep reviewing any division you still need to retake.';}
+
+  // exams
+  $('#tdExams').innerHTML=XS.map(e=>{
+    const days=Math.round((midnight(e.date)-t)/DAY), past=days<0, pass=!!S.passed[e.d];
+    const cards=CARDS.filter(c=>cdiv(c)===e.d), cc=cardCounts(cards);
+    const its=ITEMS.filter(i=>i.d===e.d); let done=0,ok=0; its.forEach(it=>{const a=S.ans[it.id];if(a){done++;if(a.ok)ok++;}});
+    const cardPct=cc.n?cc.strong/cc.n:0, qPct=its.length?ok/its.length:0;
+    const ready=Math.round((cardPct*0.5+qPct*0.5)*100);
+    return '<div class="exam'+(next===e?' next':'')+(pass?' done':'')+'">'+
+      '<div class="top"><span class="pill '+e.d.toLowerCase()+'">'+e.d+'</span><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
+      '<div class="days">'+(pass?'Passed':past?'Sat':days)+(!pass&&!past?'<small>'+(days===1?'day':'days')+'</small>':'')+'</div>'+
+      '<div class="dt">'+e.n+' · '+e.items+' items</div>'+
+      '<div class="meter2" title="Readiness"><i class="g" style="width:'+ready+'%"></i></div>'+
+      '<div class="rd"><span>Readiness '+ready+'%</span><span>'+cc.strong+'/'+cc.n+' cards · '+ok+'/'+its.length+' items</span></div>'+
+      '<label class="pass"><input type="checkbox" data-pass="'+e.d+'"'+(pass?' checked':'')+'> I passed this division</label></div>';
+  }).join('');
+  /* click a date to change it: a date picker with Save, Plan date and Cancel */
+  $('#tdExams').addEventListener('click',ev=>{
+    const b=ev.target.closest('[data-edit]');
+    if(b){const d=b.dataset.edit,x=XS.find(y=>y.d===d),box=b.parentNode;
+      box.innerHTML='<input type="date" class="exin" id="exin-'+d+'" value="'+ds(x.date)+'" aria-label="'+d+' exam date">'+
+        '<button type="button" class="btn sm pri" data-exsave="'+d+'">Save</button>'+
+        (x.edited?'<button type="button" class="btn sm" data-exreset="'+d+'" title="Back to '+fmtDate(x.plan)+'">Plan date</button>':'')+
+        '<button type="button" class="btn sm" data-excancel="1">Cancel</button>';
+      const inp=$('#exin-'+d);inp.focus();try{inp.showPicker&&inp.showPicker();}catch(_){}
+      inp.addEventListener('keydown',k=>{if(k.key==='Enter')box.querySelector('[data-exsave]').click();if(k.key==='Escape')go('today',{keepScroll:true});});
+      return;}
+    const sv=ev.target.closest('[data-exsave]');
+    if(sv){const d=sv.dataset.exsave,v=$('#exin-'+d).value,x=XS.find(y=>y.d===d);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){$('#exin-'+d).focus();return;}
+      S.examDates=S.examDates||{};
+      if(v===ds(x.plan))delete S.examDates[d];else S.examDates[d]=v;
+      save();go('today',{keepScroll:true});toast(d+' exam date set to '+fmtDate(pdate(v)));return;}
+    const rs=ev.target.closest('[data-exreset]');
+    if(rs){const d=rs.dataset.exreset;if(S.examDates)delete S.examDates[d];save();go('today',{keepScroll:true});toast(d+' exam date back to the plan date');return;}
+    if(ev.target.closest('[data-excancel]'))go('today',{keepScroll:true});
+  });
+  $('#tdExams').addEventListener('change',e=>{const cb=e.target.closest('input[data-pass]');if(!cb)return;if(cb.checked)S.passed[cb.dataset.pass]=1;else delete S.passed[cb.dataset.pass];save();go('today',{keepScroll:true});});
+
+  // this week
+  const wp=$('#tdWeek');
+  if(PW(w)){
+    const W=PW(w);
+    const done=W.t.filter((x,i)=>S.plan[taskId(W.w,i)]).length;
+    wp.innerHTML='<h3>This week · '+W.d+'</h3><div class="sub">'+done+' of '+W.t.length+' tasks done'+(W.exam?' · <strong style="color:var(--flag)">'+W.exam+'</strong>':'')+'</div>'+
+      '<div class="tasks" style="padding:0">'+W.t.map((x,i)=>{const id=taskId(W.w,i),on=!!S.plan[id];return '<div class="tk'+(on?' done':'')+(isExamTask(x)?' exam':'')+'"><input type="checkbox" id="td-'+id+'" data-t="'+id+'"'+(on?' checked':'')+'><label for="td-'+id+'">'+esc(x)+'</label></div>';}).join('')+'</div>'+
+      '<div class="row" style="margin-top:10px"><button type="button" class="btn sm" data-go="plan">Full plan</button></div>';
+    wp.addEventListener('change',e=>{const cb=e.target.closest('input[data-t]');if(!cb)return;if(cb.checked)S.plan[cb.dataset.t]=1;else delete S.plan[cb.dataset.t];cb.closest('.tk').classList.toggle('done',cb.checked);save();});
+  } else {
+    const pt=planTotals();
+    wp.innerHTML='<h3>Study plan</h3><div class="sub">'+pt.done+' of '+pt.total+' tasks complete.</div><button type="button" class="btn sm" data-go="plan">Open the plan</button>';
+  }
+  wp.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)go(b.dataset.go);});
+
+  // cards
+  const all=cardCounts(CARDS);
+  $('#tdCardStats').innerHTML=stat(all.due,'due now')+stat(all.nw,'new')+stat(all.strong,'strong');
+  $('#tdCardBars').innerHTML=DIVS.map(d=>{const cc=cardCounts(CARDS.filter(c=>cdiv(c)===d));const g=cc.n?cc.strong/cc.n*100:0,s=cc.n?cc.learn/cc.n*100:0;return '<div class="divbar"><span class="pill '+d.toLowerCase()+'">'+d+'</span><div class="meter2"><i class="g" style="width:'+g+'%"></i><i class="s" style="width:'+s+'%"></i></div><span class="n">'+cc.strong+'/'+cc.n+'</span></div>';}).join('');
+  $('#tdReview').textContent=all.due?'Review '+all.due+' due card'+(all.due===1?'':'s'):(all.nw?'Learn new cards':'Review cards');
+  $('#tdReview').onclick=()=>{S.deck='';S.fcMode='due';save();go('cards');};
+
+  // quiz
+  let qd=0,qo=0; ITEMS.forEach(it=>{const a=S.ans[it.id];if(a){qd++;if(a.ok)qo++;}});
+  $('#tdQuizStats').innerHTML=stat(qd+'/'+ITEMS.length,'answered')+stat(qo,'correct')+stat(qd?Math.round(qo/qd*100)+'%':'—','accuracy');
+  $('#tdQuizBars').innerHTML=DIVS.map(d=>{const its=ITEMS.filter(x=>x.d===d),L=its.length||1;let ok=0,no=0;its.forEach(x=>{const a=S.ans[x.id];if(a){if(a.ok)ok++;else no++;}});return '<div class="divbar"><span class="pill '+d.toLowerCase()+'">'+d+'</span><div class="meter2"><i class="g" style="width:'+(ok/L*100)+'%"></i><i class="a" style="width:'+(no/L*100)+'%"></i></div><span class="n">'+ok+'/'+its.length+'</span></div>';}).join('');
+  const mdue=mistDue().length, mopen=Object.values(S.mist).filter(m=>!m.fixed).length;
+  $('#tdMissed').disabled=!mopen;
+  $('#tdMissed').textContent=mdue?'Revisit '+mdue+' due mistake'+(mdue===1?'':'s'):mopen?mopen+' mistake'+(mopen===1?'':'s')+' scheduled':'No mistakes logged';
+  $('#tdMissed').onclick=()=>{if(mdue){S.qdiv='';S.qmode='due';save();go('practice');}else go('mistakes');};
+  $('#tdTimed').onclick=()=>{const nx=next?next.d:'';go('practice',{timed:{div:nx,n:10}});};
+
+  // weak spots
+  const weak={};
+  ITEMS.forEach(it=>{const a=S.ans[it.id];if(a&&!a.ok){(weak[it.o]=weak[it.o]||{o:it.o,m:0,c:0}).m++;}});
+  CARDS.forEach(c=>{const s=cstate(c);if(s&&s.b<=1&&c.o!=='—'){(weak[c.o]=weak[c.o]||{o:c.o,m:0,c:0}).c++;}});
+  const wl=Object.values(weak).sort((a,b)=>(b.m*2+b.c)-(a.m*2+a.c)).slice(0,6);
+  $('#tdWeak').innerHTML=wl.length?wl.map(x=>'<li><span class="obj">'+esc(x.o)+'</span><span class="why"><b>'+esc(objTitle(x.o))+'</b>'+[x.m?x.m+' missed question'+(x.m>1?'s':''):'',x.c?x.c+' shaky card'+(x.c>1?'s':''):''].filter(Boolean).join(' · ')+'</span><button type="button" class="lnk" data-obj="'+esc(x.o)+'">Reread</button></li>').join(''):'<li class="empty">Nothing yet. Answer a few questions or rate some cards and your weakest objectives will show here.</li>';
+  $('#tdWeak').addEventListener('click',e=>{const b=e.target.closest('[data-obj]');if(b)gotoObj(b.dataset.obj);});
+
+  // heat
+  const cells=[], dayN=i=>S.log[ds(new Date(t.getFullYear(),t.getMonth(),t.getDate()-i))]||0;
+  for(let i=27;i>=0;i--){const d=new Date(t.getFullYear(),t.getMonth(),t.getDate()-i), n=dayN(i);cells.push('<i class="'+(n?(n<10?'l1':n<30?'l2':'l3'):'')+(i===0?' t':'')+'" title="'+ds(d)+': '+n+'"></i>');}
+  let streak=0; for(let i=dayN(0)?0:1;i<400&&dayN(i);i++)streak++;
+  $('#tdHeat').innerHTML=cells.join('');
+  $('#tdHeatFrom').textContent=new Date(t.getTime()-27*DAY).toLocaleDateString(undefined,{day:'numeric',month:'short'});
+  $('#tdStreak').textContent=streak?streak+'-day streak. Cards reviewed and questions answered per day.':'Cards reviewed and questions answered per day. Study today to start a streak.';
+}
+/* Last 28 days in the sidebar: a 4-week calendar, Monday first, today outlined */
+function paintRailHeat(){
+  const el=$('#railHeat'); if(!el)return;
+  const t=midnight(new Date()), key=d=>ds(d), n=d=>S.log[key(d)]||0;
+  // grid ends on this week's Sunday so columns are weekdays; days after today stay blank
+  const endSun=new Date(t.getFullYear(),t.getMonth(),t.getDate()+(6-(t.getDay()+6)%7));
+  const first=new Date(endSun.getFullYear(),endSun.getMonth(),endSun.getDate()-27);
+  let cells='',total=0,active=0;
+  for(let i=0;i<28;i++){
+    const d=new Date(first.getFullYear(),first.getMonth(),first.getDate()+i), fut=d>t, c=fut?0:n(d);
+    if(!fut){total+=c;if(c)active++;}
+    cells+='<i class="'+(fut?'':c?(c<10?'l1':c<30?'l2':'l3'):'')+(+d===+t?' t':'')+'"'+(fut?' style="opacity:.35"':'')+' title="'+fmtDate(d)+': '+(fut?'—':c+' '+(c===1?'action':'actions'))+'"></i>';
+  }
+  let streak=0; for(let i=n(t)?0:1;i<400&&n(new Date(t.getFullYear(),t.getMonth(),t.getDate()-i));i++)streak++;
+  el.innerHTML='<h4>Last 28 days</h4><div class="rhdow"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div><div class="rhgrid">'+cells+'</div>'+
+    '<div class="rhsum">'+(streak?'<b>'+streak+'-day streak</b>':'<b>No streak yet</b> — study today to start one')+'<br>'+active+' active day'+(active===1?'':'s')+' · '+total+' study action'+(total===1?'':'s')+'</div>';
+}
+/* sidebar hide/show, remembered on this browser */
+const LSR='are_rail_off';
+function setRail(off){document.body.classList.toggle('railoff',off);try{localStorage.setItem(LSR,off?'1':'0');}catch(e){}}
+try{if(localStorage.getItem(LSR)==='1')document.body.classList.add('railoff');}catch(e){}
+$('#railHide').addEventListener('click',()=>{setRail(true);$('#railShow').focus();});
+$('#railShow').addEventListener('click',()=>{setRail(false);$('#railHide').focus();});
+
+/* exam dates: the plan's date unless this person set their own; sorted so "next" follows the real order */
+function myExams(){
+  const o=S.examDates||{};
+  return EXAMS.map(e=>{const own=o[e.d]&&!isNaN(pdate(o[e.d]))?pdate(o[e.d]):null,dt=own||e.date;
+    return Object.assign({},e,{date:dt,plan:e.date,label:fmtDate(dt),edited:!!own});}).sort((a,b)=>a.date-b.date);
+}
+function stat(v,l){return '<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>';}
+
+/* objective titles from the objective map */
+let OBJT=null;
+function objTitle(o){
+  if(!OBJT){OBJT={};const tpl=$('#tpl-objectives');let div=null;
+    $$('h2.s,tr',tpl.content).forEach(el=>{if(el.tagName==='H2'){const p=$('.pill',el);div=p?p.textContent.trim():null;return;}const td=$$('td',el);if(td.length===3&&div)OBJT[div+' '+td[0].textContent.trim()]=td[1].textContent.replace(/(Narrowed|Clarified) Apr 2026/,'').trim();});}
+  return OBJT[o]||(o==='—'?'Source corrections':o);
+}
+
+/* ================= NOTES ================= */
+function initNotes(id){
+  // on-this-page chips
+  const hs=$$('h2.s',view);
+  if(hs.length>2){
+    const lede=$('.lede',view);
+    const toc=document.createElement('div');toc.className='toc';
+    toc.innerHTML=hs.map((h,i)=>'<button type="button" data-h="'+i+'">'+esc(h.textContent.replace(/\s*\d+–\d+%\s*$/,'').trim())+'</button>').join('');
+    (lede||hs[0]).insertAdjacentElement(lede?'afterend':'beforebegin',toc);
+    toc.addEventListener('click',e=>{const b=e.target.closest('button[data-h]');if(b)flashEl(hs[+b.dataset.h]);});
+  }
+  if(id==='overview')drawWeights();
+  // make objective chips clickable to drill that objective
+  $$('h3 .obj',view).forEach(ch=>{const o=ch.textContent.trim();if(CARDS.some(c=>c.o===o)||ITEMS.some(i=>i.o===o)){ch.classList.add('go');ch.title='Drill '+o;ch.addEventListener('click',()=>openObjDrill(o));}});
+}
+function drawWeights(){
+  Object.keys(WEIGHTS).forEach(k=>{
+    const el=$('#wt-'+k,view); if(!el)return;
+    const total=(k==='pa')?75:100;
+    el.innerHTML=WEIGHTS[k].map(r=>{const lo=Math.round(total*r[1]/100),hi=Math.round(total*r[2]/100),pct=(r[2]/45)*100;
+      return '<div class="row"><div>'+r[0]+'</div><div class="bar'+(r[3]?' hi':'')+'"><span style="width:'+Math.min(100,pct).toFixed(1)+'%"></span></div><div class="num">'+lo+'–'+hi+'</div></div>';}).join('')+
+      '<div class="row" style="border-top:1px solid var(--rule);margin-top:6px;padding-top:8px"><div style="font-weight:600">Items in the division</div><div></div><div class="num" style="font-weight:600">'+total+'</div></div>';
+  });
+}
+function flashEl(el){if(!el)return;el.scrollIntoView({behavior:'smooth',block:'start'});el.classList.remove('hl');void el.offsetWidth;el.classList.add('hl');}
+function gotoObj(o){
+  const d=odiv(o);
+  if(!d){go('cards');return;}
+  go(d.toLowerCase());
+  const chip=$$('.obj',view).find(c=>c.textContent.trim()===o);
+  if(chip){setTimeout(()=>flashEl(chip.closest('h3,h4,h2,p,div')||chip),60);return;}
+  go('objectives');
+  const row=$$('tr',view).find(tr=>{const td=$('td',tr);return td&&td.textContent.trim()===o.split(' ')[1]&&tr.closest('.tw').previousElementSibling&&tr.closest('.tw').previousElementSibling.textContent.includes(d);});
+  if(row)setTimeout(()=>flashEl(row),60);
+}
+function openObjDrill(o){
+  const cs=CARDS.filter(c=>c.o===o).length, qs=ITEMS.filter(i=>i.o===o).length;
+  modal('<div class="lbl">'+esc(o)+'</div><div class="q">'+esc(objTitle(o))+'</div><p class="small">'+cs+' flashcard'+(cs===1?'':'s')+' and '+qs+' practice question'+(qs===1?'':'s')+' test this objective.</p><div class="row">'+
+    (cs?'<button type="button" class="btn pri" data-a="c">Drill the cards</button>':'')+(qs?'<button type="button" class="btn" data-a="q">Show the questions</button>':'')+'<button type="button" class="btn" data-a="x">Close</button></div>',
+    a=>{if(a==='c')go('cards',{obj:o});if(a==='q')go('practice',{obj:o});});
+}
+
+/* ================= MODAL ================= */
+function modal(html,onAct){
+  const m=$('#modal'),s=$('#scrim');m.innerHTML=html;m.hidden=false;s.hidden=false;
+  const close=()=>{m.hidden=true;s.hidden=true;m.onclick=null;document.removeEventListener('keydown',kd);};
+  const kd=e=>{if(e.key==='Escape')close();};
+  document.addEventListener('keydown',kd);
+  s.onclick=close;
+  m.onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;close();if(onAct)onAct(b.dataset.a);};
+  const f=$('button',m);if(f)f.focus();
+}
+
+/* ================= ACCOUNTS (Amazon Cognito + progress API) =================
+   On when config.js holds all four values and the page is not inside claude.ai
+   (claude.ai has its own sign-in and sync). */
+const AC=window.ARE_AUTH||{};
+const AUTH_ON=!!(AC.region&&AC.userPoolId&&AC.clientId&&AC.apiUrl)&&!(window.claude&&window.claude.use);
+const LSA='are_auth_v1';
+let SESSION=null;
+function jwtClaims(t){try{const b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(decodeURIComponent(escape(atob(b))));}catch(e){return {};}}
+const COGMSG={NotAuthorizedException:'Email or password is wrong.',UserNotFoundException:'Email or password is wrong.',UserNotConfirmedException:'Confirm your email first. Enter the code we sent you.',UsernameExistsException:'An account with this email already exists. Sign in instead.',CodeMismatchException:'That code is not right. Check the most recent email.',ExpiredCodeException:'That code has expired. Send a new one.',InvalidPasswordException:'Use at least 8 characters, including a lowercase letter and a number.',LimitExceededException:'Too many attempts. Wait a few minutes, then try again.',TooManyRequestsException:'Too many attempts. Wait a few minutes, then try again.',CodeDeliveryFailureException:'The email could not be sent. Check the address and try again.'};
+async function cog(action,body){
+  let r;
+  try{r=await fetch('https://cognito-idp.'+AC.region+'.amazonaws.com/',{method:'POST',headers:{'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.'+action},body:JSON.stringify(body)});}
+  catch(e){const x=new Error('No connection. Check your internet and try again.');x.code='Network';throw x;}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){const t=(j.__type||'').split('#').pop();const x=new Error(COGMSG[t]||(t==='InvalidParameterException'&&j.message)||'Something went wrong. Try again.');x.code=t;throw x;}
+  return j;
+}
+function setSession(res,email){
+  const c=jwtClaims(res.IdToken);
+  SESSION={id:res.IdToken,refresh:res.RefreshToken||(SESSION&&SESSION.refresh),exp:Date.now()+(res.ExpiresIn||3600)*1000-120000,sub:c.sub,email:c.email||email||'',name:c.name||''};
+  try{localStorage.setItem(LSA,JSON.stringify({refresh:SESSION.refresh,email:SESSION.email,sub:SESSION.sub,name:SESSION.name}));}catch(e){}
+}
+function storedAuth(){try{return JSON.parse(localStorage.getItem(LSA)||'null');}catch(e){return null;}}
+/* returns true, false (must sign in again) or 'offline' */
+async function refreshSession(){
+  const st=storedAuth(), rt=(SESSION&&SESSION.refresh)||(st&&st.refresh);
+  if(!rt)return false;
+  try{const j=await cog('InitiateAuth',{AuthFlow:'REFRESH_TOKEN_AUTH',ClientId:AC.clientId,AuthParameters:{REFRESH_TOKEN:rt}});
+    j.AuthenticationResult.RefreshToken=rt; setSession(j.AuthenticationResult,st&&st.email); return true;}
+  catch(e){return e.code==='Network'?'offline':false;}
+}
+async function resumeSession(){
+  const st=storedAuth(); if(!st||!st.refresh)return false;
+  const r=await refreshSession();
+  if(r===true)return true;
+  if(r==='offline'&&st.sub){SESSION={refresh:st.refresh,sub:st.sub,email:st.email,name:st.name,exp:0,offline:true};return true;}
+  try{localStorage.removeItem(LSA);}catch(e){}
+  return false;
+}
+async function idToken(){
+  if(!SESSION)return null;
+  if(SESSION.offline||Date.now()>SESSION.exp){const r=await refreshSession();if(r!==true)return null;}
+  return SESSION.id;
+}
+async function api(method,body){
+  const t=await idToken(); if(!t)throw noteSyncErr(method,-1,'could not refresh the sign-in');
+  let r;try{r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method,headers:Object.assign({Authorization:'Bearer '+t},body?{'Content-Type':'application/json'}:{}),body});}catch(e){throw noteSyncErr(method,0,String(e&&e.message||e));}
+  if(!r.ok){const txt=await r.text().catch(()=>'');throw noteSyncErr(method,r.status,txt);}
+  return r.status===204?null:r.json();
+}
+function enterApp(){
+  PROF={list:[{id:'u_'+SESSION.sub,name:SESSION.name||SESSION.email.split('@')[0]}],cur:'u_'+SESSION.sub};
+  loadLocal(); paintProf();
+  $('#authView').hidden=true; $('#shell').hidden=false;
+  route(); pullRemote();
+}
+async function signOut(){
+  clearTimeout(saveT);
+  if(SESSION&&!SESSION.offline&&S.at){try{await api('PUT',JSON.stringify(S));}catch(e){}}
+  clearTimeout(retryT); dirty=false;
+  try{localStorage.removeItem(lsKey(PROF.cur));localStorage.removeItem(LSA);}catch(e){}
+  SESSION=null; S=blankState(); synced=false; setSync();
+  $('#modal').hidden=true; $('#scrim').hidden=true;
+  showAuth('signin',{msg:'Signed out. Your progress is saved in your account.'});
+}
+/* profiles saved on this browser before accounts were switched on */
+function legacyProfiles(){
+  let p=null;try{p=JSON.parse(localStorage.getItem(LSP)||'null');}catch(e){}
+  const list=(p&&p.list)||[{id:'p0',name:'Me'}];
+  return list.map(x=>({id:x.id,name:x.name,st:lsLoad(x.id)})).filter(x=>x.st&&x.st.at&&(Object.keys(x.st.cards||{}).length||Object.keys(x.st.ans||{}).length||Object.keys(x.st.plan||{}).length));
+}
+function openAccount(msg){
+  const leg=legacyProfiles();
+  const n=Object.keys(S.cards).length,a=Object.keys(S.ans).length;
+  modalForm('<div class="lbl">Your account</div><div class="q">'+esc(curProf().name)+'</div><p class="small" style="margin-top:-6px">'+esc(SESSION.email)+' · '+n+' card'+(n===1?'':'s')+' rated · '+a+' question'+(a===1?'':'s')+' answered<br>'+(SESSION.offline?'Offline right now; changes are kept here and sync when you reconnect.':'Progress syncs to your account on every device you sign in on.')+'</p>'+(SYNCERR&&!synced?'<div class="aerr" style="margin:0 0 10px"><b>Not syncing.</b> '+esc(syncErrText())+'<div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-a="sync">Try sync now</button></div></div>':(synced?'<div class="learned good" style="margin:0 0 10px">Synced with your account.</div>':''))+
+    (msg?'<div class="learned good" style="margin:0 0 10px">'+esc(msg)+'</div>':'')+
+    (leg.length?'<details class="pio"'+(msg?' open':'')+'><summary>Bring in progress saved on this browser before accounts</summary><p class="small">This replaces the progress in your account with the profile you pick.</p><div class="plist">'+leg.map(x=>'<div class="prow"><span class="pick" style="cursor:default"><span class="av">'+esc(initials(x.name))+'</span><span><b>'+esc(x.name)+'</b><small>'+Object.keys(x.st.cards||{}).length+' cards rated · '+Object.keys(x.st.ans||{}).length+' questions answered</small></span></span><button type="button" class="btn sm" data-a="leg:'+x.id+'">Use this</button></div>').join('')+'</div></details>':'')+
+    '<details class="pio"><summary>Copy progress as a code</summary><p class="small">A backup you can paste back in later. Importing replaces your current progress.</p><div class="row"><button type="button" class="btn sm" data-a="exp">Copy my progress code</button></div><textarea id="pCode" rows="3" placeholder="Paste a progress code here" aria-label="Progress code"></textarea><div class="row"><button type="button" class="btn sm" data-a="imp">Import</button></div></details>'+
+    '<div class="row" style="margin-top:14px"><button type="button" class="btn" data-a="close">Done</button><button type="button" class="btn" data-a="out">Sign out</button></div>',
+  (act,m,close)=>{
+    const [a2,id]=act.split(':');
+    if(a2==='close')close();
+    if(a2==='out')signOut();
+    if(a2==='sync'){close();SYNCERR=null;setSync('Syncing…');pullRemote().then(()=>{if(dirty)return push();}).then(()=>{if(SYNCERR)openAccount();else toast('Synced');});}
+    if(a2==='leg'){const x=leg.find(y=>y.id===id);if(!x)return;S=Object.assign(blankState(),x.st);normalize();save();close();go(curPage||'today');toast('Progress from '+x.name+' added to your account');}
+    if(a2==='exp'){const code='ARE1.'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));const ta=$('#pCode',m);ta.value=code;try{navigator.clipboard.writeText(code).then(()=>toast('Progress code copied'),()=>ta.select());}catch(e){ta.select();}}
+    if(a2==='imp'){const raw=$('#pCode',m).value.trim();try{if(!raw.startsWith('ARE1.'))throw 0;const d=JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));if(!d||d.v!==2)throw 0;S=Object.assign(blankState(),d);normalize();save();close();go(curPage||'today');toast('Progress imported');}
+      catch(e){$('#pCode',m).insertAdjacentHTML('afterend','<p class="small" style="color:var(--flag);margin:6px 0 0">That code could not be read. Copy the whole code, starting with ARE1.</p>');}}
+  });
+}
+/* sign-in screens: signin · signup · confirm · forgot · reset */
+let authMem={};
+function showAuth(mode,o){
+  o=o||{}; $('#shell').hidden=true; $('#authView').hidden=false;
+  const f=(id,label,type,extra)=>'<label class="af" for="'+id+'"><span>'+label+'</span><input id="'+id+'" type="'+type+'" '+(extra||'')+'></label>';
+  const E=esc(authMem.email||'');
+  const V={
+    signin:['Sign in','Pick up where you left off, on any device.',f('aEmail','Email','email','autocomplete="username" required value="'+E+'"')+f('aPass','Password','password','autocomplete="current-password" required'),'Sign in','<button type="button" class="lnk" data-m="signup">Create an account</button><button type="button" class="lnk" data-m="forgot">Forgot password?</button>'],
+    signup:['Create your account','Your flashcards, answers, mistakes and plan follow you to every device.',f('aName','Your name','text','autocomplete="name" maxlength="40" required')+f('aEmail','Email','email','autocomplete="email" required value="'+E+'"')+f('aPass','Password','password','autocomplete="new-password" minlength="8" required')+'<p class="ahint">At least 8 characters, with a lowercase letter and a number.</p>','Create account','<button type="button" class="lnk" data-m="signin">I already have an account</button>'],
+    confirm:['Check your email','We sent a 6-digit code to '+E+'. Enter it to confirm your account.',f('aCode','Code','text','inputmode="numeric" autocomplete="one-time-code" maxlength="8" required'),'Confirm','<button type="button" class="lnk" data-m="resend">Send a new code</button><button type="button" class="lnk" data-m="signin">Back to sign in</button>'],
+    forgot:['Reset your password','Enter your email and we will send you a code.',f('aEmail','Email','email','autocomplete="username" required value="'+E+'"'),'Send code','<button type="button" class="lnk" data-m="signin">Back to sign in</button>'],
+    reset:['Choose a new password','Enter the code we emailed to '+E+' and your new password.',f('aCode','Code','text','inputmode="numeric" autocomplete="one-time-code" maxlength="8" required')+f('aPass','New password','password','autocomplete="new-password" minlength="8" required')+'<p class="ahint">At least 8 characters, with a lowercase letter and a number.</p>','Set password','<button type="button" class="lnk" data-m="signin">Back to sign in</button>']
+  }[mode];
+  $('#authBody').innerHTML='<h1>'+V[0]+'</h1><p class="asub">'+V[1]+'</p>'+(o.msg?'<div class="learned good">'+esc(o.msg)+'</div>':'')+'<div class="aerr" id="aErr" role="alert" hidden></div>'+
+    '<form id="aForm" novalidate>'+V[2]+'<button type="submit" class="btn pri abtn" id="aGo">'+V[3]+'</button></form><div class="alinks">'+V[4]+'</div>';
+  const first=$('#authBody input:not([value]),#authBody input[value=""]')||$('#authBody input'); if(first)first.focus();
+  $('#authBody').onclick=async e=>{const b=e.target.closest('[data-m]');if(!b)return;
+    if(b.dataset.m==='resend'){try{await cog('ResendConfirmationCode',{ClientId:AC.clientId,Username:authMem.email});showAuth('confirm',{msg:'A new code is on its way.'});}catch(x){authErr(x.message);}return;}
+    showAuth(b.dataset.m);};
+  $('#aForm').onsubmit=async e=>{
+    e.preventDefault();
+    const v=id=>{const el=$('#'+id);return el?el.value.trim():'';}, go1=$('#aGo');
+    const need=$$('#aForm input').find(i=>!i.value.trim()); if(need){authErr('Fill in '+need.closest('label').querySelector('span').textContent.toLowerCase()+'.');need.focus();return;}
+    go1.disabled=true; const label=go1.textContent; go1.textContent='Please wait…';
+    try{
+      if(mode==='signin'){authMem.email=v('aEmail');authMem.pass=$('#aPass').value;await doSignIn();return;}
+      if(mode==='signup'){authMem.email=v('aEmail');authMem.pass=$('#aPass').value;
+        await cog('SignUp',{ClientId:AC.clientId,Username:authMem.email,Password:authMem.pass,UserAttributes:[{Name:'email',Value:authMem.email},{Name:'name',Value:v('aName')}]});
+        showAuth('confirm');return;}
+      if(mode==='confirm'){await cog('ConfirmSignUp',{ClientId:AC.clientId,Username:authMem.email,ConfirmationCode:v('aCode')});
+        if(authMem.pass){await doSignIn();}else showAuth('signin',{msg:'Email confirmed. Sign in to continue.'});return;}
+      if(mode==='forgot'){authMem.email=v('aEmail');await cog('ForgotPassword',{ClientId:AC.clientId,Username:authMem.email});showAuth('reset');return;}
+      if(mode==='reset'){authMem.pass=$('#aPass').value;await cog('ConfirmForgotPassword',{ClientId:AC.clientId,Username:authMem.email,ConfirmationCode:v('aCode'),Password:authMem.pass});await doSignIn();return;}
+    }catch(x){
+      if(x.code==='UserNotConfirmedException'){try{await cog('ResendConfirmationCode',{ClientId:AC.clientId,Username:authMem.email});}catch(_){}showAuth('confirm',{msg:'Your email is not confirmed yet. We sent a new code.'});return;}
+      authErr(x.message); go1.disabled=false; go1.textContent=label;
+    }
+  };
+}
+function authErr(t){const el=$('#aErr');if(!el)return;el.textContent=t;el.hidden=false;}
+async function doSignIn(){
+  const j=await cog('InitiateAuth',{AuthFlow:'USER_PASSWORD_AUTH',ClientId:AC.clientId,AuthParameters:{USERNAME:authMem.email,PASSWORD:authMem.pass}});
+  if(!j.AuthenticationResult){const x=new Error('This account needs a step the site does not support yet ('+(j.ChallengeName||'unknown')+').');throw x;}
+  setSession(j.AuthenticationResult,authMem.email); authMem.pass=''; enterApp();
+}
+
+/* a dialog that stays open: onAct(action, modalEl, close) for [data-a] clicks, onSubmit(form, modalEl, close) for forms */
+function modalForm(html,onAct,onSubmit){
+  const m=$('#modal'),s=$('#scrim');m.innerHTML=html;m.hidden=false;s.hidden=false;
+  const close=()=>{m.hidden=true;s.hidden=true;m.onclick=null;m.onsubmit=null;document.removeEventListener('keydown',kd);};
+  const kd=e=>{if(e.key==='Escape')close();};
+  document.addEventListener('keydown',kd);
+  s.onclick=close;
+  m.onclick=e=>{const b=e.target.closest('[data-a]');if(b&&onAct)onAct(b.dataset.a,m,close);};
+  m.onsubmit=e=>{e.preventDefault();if(onSubmit)onSubmit(e.target,m,close);};
+}
+$('#profBtn').addEventListener('click',()=>AUTH_ON?openAccount():openProfiles());
+
+/* ================= FLASHCARDS ================= */
+let fq=[], fcur=null, fshown=false, fsess=0, fobj=null, fkeys=null;
+function initCards(opts){
+  fobj=opts&&opts.obj||null;
+  fkeys=opts&&opts.keys||null;
+  $('#fcEyebrow').textContent='Spaced repetition · '+CARDS.length+' cards · '+DECKS.length+' decks';
+  const sel=$('#deckSel');
+  const cnt=list=>{const c=cardCounts(list);return c.n+' cards · '+(c.due+c.nw)+' to study';};
+  let h='<option value="">All decks — '+cnt(CARDS)+'</option><optgroup label="By division">';
+  DIVS.forEach(d=>{h+='<option value="div:'+d+'">'+d+' — '+cnt(CARDS.filter(c=>cdiv(c)===d))+'</option>';});
+  h+='</optgroup><optgroup label="Decks">';
+  DECKS.forEach(d=>{h+='<option value="'+esc(d)+'">'+esc(d)+' — '+cnt(CARDS.filter(c=>c.d===d))+'</option>';});
+  h+='</optgroup>';
+  if(fobj)h='<option value="obj">Objective '+esc(fobj)+'</option>'+h;
+  else if(fkeys)h='<option value="obj">Cards you keep missing — '+fkeys.length+'</option>'+h;
+  sel.innerHTML=h; sel.value=(fobj||fkeys)?'obj':S.deck;
+  sel.onchange=()=>{if(sel.value==='obj')return;fobj=null;fkeys=null;S.deck=sel.value;save();startSession();};
+  $$('#fcMode button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===S.fcMode)));
+  $('#fcMode').onclick=e=>{const b=e.target.closest('button[data-m]');if(!b)return;S.fcMode=b.dataset.m;save();$$('#fcMode button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));startSession();};
+  startSession();
+}
+function fpool(){return fkeys?CARDS.filter(c=>fkeys.includes(ckey(c))):fobj?CARDS.filter(c=>c.o===fobj):cardPool();}
+function startSession(){
+  const p=fpool(), now=Date.now();
+  fsess=0;
+  if(S.fcMode==='all'||fobj||fkeys){
+    fq=shuffle(p.slice()).sort((a,b)=>{const x=cstate(a),y=cstate(b);return (x?x.b:-1)-(y?y.b:-1);});
+  } else {
+    const due=p.filter(c=>{const s=cstate(c);return s&&s.due<=now;}).sort((a,b)=>cstate(a).b-cstate(b).b||cstate(a).due-cstate(b).due);
+    const nw=shuffle(p.filter(c=>!cstate(c))).slice(0,20);
+    fq=due.concat(nw);
+  }
+  nextCard();
+}
+function nextCard(){
+  fcur=fq.shift()||null; fshown=false;
+  if(!fcur){cardsDone();return;}
+  paintCard();
+}
+function paintCard(){
+  const s=cstate(fcur), b=s?Math.min(3,s.b):null;
+  const tag=s?'<span class="st b'+b+'">'+BOXNAME[s.b]+'</span>':'<span class="st">new</span>';
+  $('#fcStage').innerHTML='<div class="flash" id="flash" tabindex="0" role="button" aria-label="'+(fshown?'Answer shown':'Reveal answer')+'">'+
+    '<div class="tags"><span class="obj">'+esc(fcur.o)+'</span><span>'+esc(fcur.d)+'</span>'+tag+'</div>'+
+    '<div class="q">'+fcur.q+'</div>'+(fshown?'<div class="a">'+fcur.a+'</div>':'<div class="hint">Tap or press Space to reveal</div>')+'</div>'+
+    (fshown?'<div class="rate3"><button type="button" class="r1" data-r="1">Again<small>1 · minutes</small></button><button type="button" class="r2" data-r="2">Shaky<small>2 · tomorrow</small></button><button type="button" class="r3" data-r="3">Good<small>3 · '+goodLabel(s)+'</small></button></div>':'<button type="button" class="revealbtn" id="reveal">Reveal answer</button>');
+  $('#flash').onclick=()=>{if(!fshown&&!swiped)reveal();};
+  if(fshown)$('#fcStage').insertAdjacentHTML('beforeend','<div class="fcstat swipehint">Swipe the card left for Again, right for Good</div>');
+  attachSwipe($('#flash'));
+  const rv=$('#reveal'); if(rv)rv.onclick=reveal;
+  $$('.rate3 button').forEach(b=>b.onclick=()=>rate(+b.dataset.r));
+  const c=cardCounts(fpool());
+  $('#fcStat').innerHTML='<span>'+(fq.length+1)+' left this session</span><span>'+fsess+' rated</span><span>'+c.strong+' strong · '+c.learn+' learning · '+c.nw+' new</span>';
+}
+/* touch: once the answer shows, swipe left = Again, right = Good; vertical drags scroll the page */
+let swiped=false;
+function attachSwipe(el){
+  let sx=0,sy=0,dx=0,on=false,decided=false;
+  el.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;sx=e.clientX;sy=e.clientY;dx=0;on=true;decided=false;swiped=false;});
+  el.addEventListener('pointermove',e=>{
+    if(!on)return;const mx=e.clientX-sx,my=e.clientY-sy;
+    if(!decided){if(Math.abs(mx)<8&&Math.abs(my)<8)return;decided=true;if(Math.abs(my)>Math.abs(mx)){on=false;return;}el.classList.add('drag');try{el.setPointerCapture(e.pointerId);}catch(_){}}
+    dx=fshown?mx:mx*0.15;
+    el.style.transform='translateX('+dx+'px) rotate('+(dx/30)+'deg)';
+  });
+  const end=()=>{
+    if(!on)return;on=false;el.classList.remove('drag');
+    const th=Math.min(110,(window.innerWidth||400)*0.26);
+    if(fshown&&Math.abs(dx)>th){swiped=true;el.style.transform='translateX('+(dx<0?-1:1)*window.innerWidth+'px)';el.style.opacity='0';setTimeout(()=>rate(dx<0?1:3),160);return;}
+    if(Math.abs(dx)>8)swiped=true;
+    el.style.transform='';setTimeout(()=>{swiped=false;},50);
+  };
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+}
+function goodLabel(s){const nb=s?Math.min(5,s.b+1):2;const d=Math.round(INT[nb]/DAY);return d+' day'+(d===1?'':'s');}
+function reveal(){if(!fcur||fshown)return;fshown=true;paintCard();const r=$('.rate3 .r3');if(r)r.focus({preventScroll:true});}
+function rate(r){
+  if(!fcur||!fshown)return;
+  const k=ckey(fcur), s=S.cards[k]||{b:0,n:0,due:0}, now=Date.now();
+  if(r===1){S.cardMiss[k]=(S.cardMiss[k]||0)+1;s.b=0;s.due=now+INT[0];fq.splice(Math.min(3,fq.length),0,fcur);}
+  else if(r===2){s.b=Math.max(1,Math.min(s.b,2));s.due=now+DAY;}
+  else{s.b=Math.min(5,(S.cards[k]?s.b:1)+1);s.due=now+INT[s.b];}
+  s.n=(s.n||0)+1; s.r=r; S.cards[k]=s;
+  fsess++; logAct(); save(); nextCard();
+}
+function cardsDone(){
+  const p=fpool(), c=cardCounts(p), now=Date.now();
+  const nextDue=p.map(cstate).filter(Boolean).map(s=>s.due).filter(d=>d>now).sort((a,b)=>a-b)[0];
+  const when=nextDue?(nextDue-now<DAY?'later today':'on '+new Date(nextDue).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})):null;
+  $('#fcStage').innerHTML='<div class="donebox"><div class="big">'+fsess+'</div><h2>'+(fsess?'Session complete':'Nothing due right now')+'</h2><p>'+c.strong+' of '+c.n+' cards in this set are strong.'+(when?' The next card comes due '+when+'.':'')+(c.nw?' '+c.nw+' new cards remain.':'')+'</p><div class="row">'+
+    (c.nw&&S.fcMode==='due'?'<button type="button" class="btn pri" id="fcMore">Learn 20 more new cards</button>':'')+
+    '<button type="button" class="btn" id="fcAll">Study the whole set anyway</button><button type="button" class="btn" id="fcHome">Back to Today</button></div></div>';
+  $('#fcStat').innerHTML='';
+  const m=$('#fcMore'); if(m)m.onclick=startSession;
+  $('#fcAll').onclick=()=>{S.fcMode='all';save();initCards({obj:fobj,keys:fkeys});};
+  $('#fcHome').onclick=()=>go('today');
+}
+document.addEventListener('keydown',e=>{
+  if(!$('#modal').hidden)return;
+  const tg=e.target, typing=tg&&(tg.tagName==='INPUT'||tg.tagName==='SELECT'||tg.tagName==='TEXTAREA');
+  if(e.key==='/'&&!typing){e.preventDefault();$('#q').focus();return;}
+  if(curPage!=='cards'||typing||!fcur)return;
+  if((e.key===' '||e.key==='Enter')&&!fshown){e.preventDefault();reveal();}
+  else if(fshown&&['1','2','3'].includes(e.key)){e.preventDefault();rate(+e.key);}
+});
+
+/* ================= PRACTICE ================= */
+let run=null, tmr=null;
+function stopTimer(){clearInterval(tmr);tmr=null;}
+function initPractice(opts){
+  opts=opts||{};
+  $('#qzEyebrow').textContent=ITEMS.length+' items · every explanation tagged to its objective';
+  if(opts.timed){startRun(opts.timed.div,opts.timed.n);return;}
+  practiceList(opts);
+}
+function practiceList(opts){
+  opts=opts||{};
+  const area=$('#qzArea');
+  const obj=opts.obj||null;
+  area.innerHTML='<div class="qzctl">'+
+    (obj?'<div class="row"><span class="lbl">Showing objective</span><span class="obj">'+esc(obj)+'</span><button type="button" class="lnk" id="qzClear">Show all questions</button></div>':
+    '<div class="row"><span class="lbl" style="min-width:64px">Division</span><div class="seg" id="qzDiv">'+['','PA','PPD','PDD'].map(d=>'<button type="button" data-d="'+d+'">'+(d||'All')+'</button>').join('')+'</div></div>'+
+    '<div class="row"><span class="lbl" style="min-width:64px">Show</span><div class="seg" id="qzMode">'+[['all','All'],['new','Unanswered'],['due','Mistakes due ('+mistDue().length+')'],['missed','Missed']].map(m=>'<button type="button" data-m="'+m[0]+'">'+m[1]+'</button>').join('')+'</div></div>')+
+    '<div class="row"><span class="lbl" style="min-width:64px">Timed</span><select class="sel" id="qzN" aria-label="Number of items"><option value="10">10 items · 24 min</option><option value="20">20 items · 48 min</option><option value="0">Every item in this division</option></select><button type="button" class="btn pri" id="qzStart">Start timed set</button></div>'+
+    '<div class="progress" id="qzprog" style="margin:0"></div></div><div id="quiz"></div>';
+  if(!obj){
+    $$('#qzDiv button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.d===S.qdiv)));
+    $$('#qzMode button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===S.qmode)));
+    $('#qzDiv').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.qdiv=b.dataset.d;save();practiceList();};
+    $('#qzMode').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.qmode=b.dataset.m;save();practiceList();};
+  } else $('#qzClear').onclick=()=>practiceList();
+  $('#qzStart').onclick=()=>startRun(obj?'':S.qdiv,+$('#qzN').value);
+  let list=ITEMS.map(it=>({it,i:it.id}));
+  if(obj)list=list.filter(x=>x.it.o===obj);
+  else{
+    if(S.qdiv)list=list.filter(x=>x.it.d===S.qdiv);
+    if(S.qmode==='new')list=list.filter(x=>!S.ans[x.i]);
+    if(S.qmode==='missed')list=list.filter(x=>S.ans[x.i]&&!S.ans[x.i].ok);
+    if(S.qmode==='due'){const d=mistDue();list=list.filter(x=>d.includes(x.i));}
+  }
+  shownList=list;
+  const wrap=$('#quiz');
+  if(!list.length)wrap.innerHTML='<div class="panel empty">'+(S.qmode==='missed'?'No missed questions in this set. Good.':S.qmode==='due'?'No mistakes are due right now. Missed questions come back the day after you miss them.':'Every question in this set is answered. Switch to All to review them.')+'</div>';
+  else if(S.qmode==='due'&&!obj)wrap.insertAdjacentHTML('beforeend','<p class="small">Answer these fresh. Your earlier wrong answer is on the Mistakes page if you want to compare after.</p>');
+  if(opts.focusFresh!=null)opts.focus=opts.focusFresh;
+  list.forEach(x=>wrap.appendChild(itemEl(x.it,x.i,{live:true,fresh:(S.qmode==='due'&&!obj)||x.i===opts.focusFresh})));
+  listProg(list);
+  if(opts.focus!=null){const el=document.getElementById('it-'+opts.focus);if(el)setTimeout(()=>{el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flashme');setTimeout(()=>el.classList.remove('flashme'),2200);},60);}
+}
+function listProg(list){
+  let d=0,o=0;list.forEach(x=>{const a=S.ans[x.i];if(a){d++;if(a.ok)o++;}});
+  const p=$('#qzprog');if(p)p.textContent=list.length+' items shown · '+d+' answered · '+o+' correct'+(d?' ('+Math.round(o/d*100)+'%)':'');
+}
+/* one item card. mode.live: answers record immediately; mode.run: selection only, no reveal; mode.review: show result for given sel */
+function itemEl(it,idx,mode){
+  const el=document.createElement('div');el.className='qz';el.id='it-'+idx;
+  const typ=it.t==='cata'?'Check all that apply':'Multiple choice';
+  el.innerHTML='<div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>'+typ+'</span></div>'+
+    '<div class="stem">'+it.s+'</div>'+it.opts.map((o,i)=>'<button type="button" class="opt" data-i="'+i+'">'+esc(o)+'</button>').join('')+
+    '<div class="foot"></div><div class="exp" hidden></div>';
+  const foot=$('.foot',el);
+  let sel=(mode.sel||[]).slice();
+  const mark=()=>$$('.opt',el).forEach(b=>b.classList.toggle('on',sel.includes(+b.dataset.i)));
+  const showResult=(s,info)=>{
+    $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
+    const ok=itemOk(it,s), exp=$('.exp',el);exp.hidden=false;
+    exp.innerHTML='<strong style="color:'+(ok?'var(--ok)':'var(--flag)')+'">'+(ok?'Correct.':'Not quite.')+'</strong> '+it.e+(info?'<div class="learned '+info.cls+'">'+info.msg+'</div>':'');
+    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'');
+  };
+  if(mode.live&&S.ans[idx]&&!mode.fresh){showResult(S.ans[idx].sel);}
+  else if(mode.review){showResult(mode.sel||[]);}
+  else{
+    mark();
+    if(it.t==='cata'&&mode.live)foot.innerHTML='<button type="button" class="btn sm pri" data-act="submit">Submit selection</button>';
+  }
+  el.addEventListener('click',e=>{
+    const a=e.target.closest('[data-act]');
+    if(a){
+      if(a.dataset.act==='reread')gotoObj(it.o);
+      if(a.dataset.act==='retry'){el.replaceWith(itemEl(it,idx,Object.assign({},mode,{fresh:true})));}
+      if(a.dataset.act==='submit'&&sel.length){const r=record(idx,sel);showResult(sel,r);refreshProg();}
+      return;
+    }
+    const b=e.target.closest('.opt');if(!b||b.disabled)return;
+    const i=+b.dataset.i;
+    if(it.t==='mc'){sel=[i];}else{sel=sel.includes(i)?sel.filter(x=>x!==i):sel.concat(i);}
+    if(mode.live&&it.t==='mc'){const r=record(idx,sel);showResult(sel,r);refreshProg();return;}
+    mark();
+    if(mode.onSel)mode.onSel(sel.slice());
+  });
+  return el;
+}
+/* record an answer and learn from it; returns {cls,msg} describing what the system did */
+function record(idx,sel){
+  const it=ITEM(idx), ok=itemOk(it,sel), now=Date.now();
+  S.ans[idx]={sel:sel.slice(),ok:ok,at:now};
+  let out=null;
+  const m=S.mist[idx];
+  if(!ok){
+    const e=m||{n:0,note:''};
+    e.n++; e.sel=sel.slice(); e.at=now; e.stage=0; e.due=now+MGAP[0]; e.fixed=false;
+    S.mist[idx]=e;
+    const q=queueObjCards(it.o);
+    out={cls:'',msg:'<strong>Logged in your mistakes.</strong> This question comes back tomorrow'+(q?', and '+q+' '+esc(it.o)+' flashcard'+(q===1?' is':'s are')+' now in today\'s review':'')+'.'+(e.n>1?' You have missed it '+e.n+' times — add a note on the Mistakes page about what keeps tripping you.':'')};
+  } else if(m&&!m.fixed){
+    if(now>=m.due-6*36e5){ // on schedule (within 6 h of due): advance
+      m.stage++;
+      if(m.stage>=MGAP.length){m.fixed=true;m.fixedAt=now;out={cls:'good',msg:'<strong>Fixed.</strong> Right three times on schedule — this one has stuck.'};}
+      else{m.due=now+MGAP[m.stage];out={cls:'good',msg:'<strong>Right on schedule</strong> ('+m.stage+' of 3). It comes back in '+Math.round(MGAP[m.stage]/DAY)+' days to make sure.'};}
+    } else out={cls:'good',msg:'Right — but this was an early retry, so the schedule stays the same. It is due '+whenStr(m.due)+'.'};
+  }
+  logAct(); save();
+  return out;
+}
+/* pull this objective's cards into today's review */
+function queueObjCards(o){
+  if(!o||o==='—')return 0;
+  const now=Date.now(); let n=0;
+  CARDS.filter(c=>c.o===o).forEach(c=>{const k=ckey(c),s=S.cards[k];
+    if(!s){S.cards[k]={b:0,n:0,due:now,q:1};n++;}
+    else if(s.due>now){s.due=now;s.b=Math.min(s.b,1);n++;}});
+  return n;
+}
+function whenStr(t){const d=Math.round((midnight(new Date(t))-midnight(new Date()))/DAY);return d<=0?'today':d===1?'tomorrow':'in '+d+' days';}
+function mistDue(){const now=Date.now();return Object.keys(S.mist).filter(i=>{const m=S.mist[i];return !m.fixed&&m.due<=now&&ITEM(i);});}
+let shownList=[];
+function refreshProg(){if($('#qzprog'))listProg(shownList);}
+
+/* timed run */
+function startRun(div,n){
+  let pool=ITEMS.map(it=>it.id).filter(i=>!div||ITEM(i).d===div);
+  // prefer unanswered and missed items first
+  pool=shuffle(pool).sort((a,b)=>rank(a)-rank(b));
+  if(n)pool=pool.slice(0,n);
+  startRunIdx(pool,div?'Timed set · '+div:'Timed set',div);
+}
+function startRunIdx(ids,label,div){
+  const pool=shuffle(ids.slice());
+  run={div:div||'',label:label,idx:pool,sel:{},cur:0,secs:Math.round(pool.length*2.4*60),start:Date.now(),done:false};
+  paintRun();
+  stopTimer();
+  tmr=setInterval(()=>{const left=runLeft();const t=$('#runT');if(t){t.textContent=fmt(left);t.classList.toggle('low',left<120);}if(left<=0)finishRun();},1000);
+}
+function rank(i){const m=S.mist[i];if(m&&!m.fixed&&m.due<=Date.now())return 0;const a=S.ans[i];return !a?1:(a.ok?3:2);}
+function runLeft(){return Math.max(0,run.secs-Math.floor((Date.now()-run.start)/1000));}
+function fmt(s){return Math.floor(s/60)+':'+pad(s%60);}
+function paintRun(){
+  const area=$('#qzArea'); if(!area)return;
+  const i=run.idx[run.cur], it=ITEM(i);
+  area.innerHTML='<div class="qzctl"><div class="runbar"><div><span class="lbl">'+esc(run.label)+'</span><div class="timer" id="runT">'+fmt(runLeft())+'</div></div>'+
+    '<div class="row"><button type="button" class="btn sm" id="runPrev"'+(run.cur?'':' disabled')+'>Previous</button><button type="button" class="btn sm" id="runNext">'+(run.cur<run.idx.length-1?'Next':'Review answers')+'</button><button type="button" class="btn sm pri" id="runEnd">Finish and score</button></div></div>'+
+    '<div class="dots" id="runDots">'+run.idx.map((x,k)=>'<button type="button" data-k="'+k+'" class="'+(run.sel[x]&&run.sel[x].length?'ans':'')+(k===run.cur?' cur':'')+'" aria-label="Item '+(k+1)+'">'+(k+1)+'</button>').join('')+'</div></div><div id="runItem"></div>';
+  $('#runItem').appendChild(itemEl(it,i,{sel:run.sel[i]||[],onSel:s=>{run.sel[i]=s;const d=$$('#runDots button')[run.cur];if(d)d.classList.toggle('ans',s.length>0);}}));
+  $('#runPrev').onclick=()=>{run.cur--;paintRun();};
+  $('#runNext').onclick=()=>{if(run.cur<run.idx.length-1){run.cur++;paintRun();}else finishRun();};
+  $('#runEnd').onclick=()=>{
+    const un=run.idx.filter(x=>!(run.sel[x]&&run.sel[x].length)).length;
+    if(un&&runLeft()>0){modal('<div class="q">Finish with '+un+' unanswered?</div><p class="small">Unanswered items score zero. On the exam there is no penalty for guessing, so answer everything.</p><div class="row"><button type="button" class="btn pri" data-a="y">Finish and score</button><button type="button" class="btn" data-a="n">Keep going</button></div>',a=>{if(a==='y')finishRun();});}
+    else finishRun();
+  };
+  $('#runDots').onclick=e=>{const b=e.target.closest('button[data-k]');if(b){run.cur=+b.dataset.k;paintRun();}};
+}
+function finishRun(){
+  if(!run||run.done)return; run.done=true; stopTimer();
+  const used=Math.min(run.secs,Math.floor((Date.now()-run.start)/1000));
+  let ok=0, logged=0, fixedN=0; const byObj={};
+  run.idx.forEach(i=>{const s=run.sel[i]||[];const good=itemOk(ITEM(i),s);if(good)ok++;
+    if(s.length){const r=record(i,s);if(!good)logged++;else if(r&&S.mist[i]&&S.mist[i].fixed&&r.msg.indexOf('Fixed')>=0)fixedN++;}else{S.ans[i]={sel:[],ok:false,at:Date.now()};}
+    if(!good)byObj[ITEM(i).o]=(byObj[ITEM(i).o]||0)+1;});
+  save();
+  const pct=Math.round(ok/run.idx.length*100);
+  const area=$('#qzArea');
+  area.innerHTML='<div class="qzctl"><div class="score"><b>'+ok+'/'+run.idx.length+'</b><span class="lbl">'+pct+'% correct · '+fmt(used)+' used of '+fmt(run.secs)+'</span></div>'+
+    ((logged||fixedN)?'<div class="learned'+(logged?'':' good')+'" style="margin:0">'+(logged?logged+' wrong answer'+(logged===1?'':'s')+' logged on the Mistakes page; each comes back tomorrow and its objective\'s cards are in today\'s review. ':'')+(fixedN?fixedN+' earlier mistake'+(fixedN===1?'':'s')+' now fixed.':'')+'</div>':'')+
+    (Object.keys(byObj).length?'<div class="row"><span class="lbl">Reread</span>'+Object.keys(byObj).map(o=>'<button type="button" class="btn sm" data-obj="'+esc(o)+'">'+esc(o)+(byObj[o]>1?' ×'+byObj[o]:'')+'</button>').join('')+'</div>':'<p class="small" style="margin:0">Clean sweep. Try a larger set or a different division.</p>')+
+    '<div class="row"><button type="button" class="btn pri" id="runAgain">New timed set</button><button type="button" class="btn" id="runList">Back to the question bank</button></div></div><div id="runRev"></div>';
+  run.idx.forEach(i=>$('#runRev').appendChild(itemEl(ITEM(i),i,{review:true,sel:run.sel[i]||[]})));
+  const r=run; run=null;
+  area.querySelector('.qzctl').addEventListener('click',e=>{const b=e.target.closest('[data-obj]');if(b)gotoObj(b.dataset.obj);});
+  $('#runAgain').onclick=()=>startRun(r.div,r.idx.length);
+  $('#runList').onclick=()=>practiceList();
+  window.scrollTo(0,0);
+}
+
+/* ================= MISTAKES ================= */
+function initMistakes(){
+  const now=Date.now(), ids=Object.keys(S.mist).filter(i=>ITEM(i));
+  const due=ids.filter(i=>!S.mist[i].fixed&&S.mist[i].due<=now), later=ids.filter(i=>!S.mist[i].fixed&&S.mist[i].due>now), fixed=ids.filter(i=>S.mist[i].fixed);
+  const byN=(a,b)=>S.mist[b].n-S.mist[a].n||S.mist[a].due-S.mist[b].due;
+  due.sort(byN); later.sort((a,b)=>S.mist[a].due-S.mist[b].due); fixed.sort((a,b)=>(S.mist[b].fixedAt||0)-(S.mist[a].fixedAt||0));
+  $('#mkStats').innerHTML=stat(due.length,'due now')+stat(later.length,'scheduled')+stat(fixed.length,'fixed');
+  $('#mkActs').innerHTML=(due.length?'<button type="button" class="btn pri" id="mkGo">Revisit '+due.length+' due now</button>':'')+
+    (due.length+later.length?'<button type="button" class="btn" id="mkRun">Timed set of every open mistake</button>':'');
+  const g=$('#mkGo'); if(g)g.onclick=()=>{S.qdiv='';S.qmode='due';save();go('practice');};
+  const r=$('#mkRun'); if(r)r.onclick=()=>{go('practice');startRunIdx(due.concat(later),'Open mistakes');};
+  const list=$('#mkList');
+  if(!ids.length){list.innerHTML='<div class="panel empty">No mistakes yet. When you miss a practice question it appears here with what you picked, the right answer, and the trap behind it.</div>';}
+  else{
+    const sec=(title,arr,cls)=>arr.length?'<div class="mkgrp">'+title+' · '+arr.length+'</div>'+arr.map(i=>mkEl(i,cls)).join(''):'';
+    list.innerHTML=sec('Due now',due,'')+sec('Coming back',later,'later')+(fixed.length?'<details><summary>Fixed · '+fixed.length+'</summary>'+fixed.map(i=>mkEl(i,'fixed')).join('')+'</details>':'');
+  }
+  list.onclick=e=>{const b=e.target.closest('[data-act]');if(!b)return;const i=b.dataset.i;
+    if(b.dataset.act==='retry'){S.qdiv='';S.qmode='all';go('practice',{obj:null,focusFresh:i});}
+    if(b.dataset.act==='reread')gotoObj(ITEM(i).o);
+    if(b.dataset.act==='cards')go('cards',{obj:ITEM(i).o});};
+  let nt=null;
+  list.oninput=e=>{const ta=e.target.closest('textarea[data-i]');if(!ta)return;S.mist[ta.dataset.i].note=ta.value.slice(0,1000);clearTimeout(nt);nt=setTimeout(save,700);};
+  // leeches
+  const lee=CARDS.filter(c=>(S.cardMiss[ckey(c)]||0)>=2).sort((a,b)=>S.cardMiss[ckey(b)]-S.cardMiss[ckey(a)]);
+  $('#mkCards').innerHTML=lee.length?lee.slice(0,15).map(c=>'<div class="leech"><span class="c">×'+S.cardMiss[ckey(c)]+'</span><span class="t">'+strip(c.q)+'<br><span class="small" style="color:var(--ink-3)">'+esc(c.d)+' · '+esc(c.o)+'</span></span></div>').join('')+
+    '<div class="row" style="margin-top:12px"><button type="button" class="btn pri" id="mkLee">Drill these '+lee.length+' cards</button></div>':'<div class="panel empty">None yet. Cards appear here after you rate them Again twice.</div>';
+  const lb=$('#mkLee'); if(lb)lb.onclick=()=>go('cards',{keys:lee.map(ckey)});
+}
+function mkEl(i,cls){
+  const it=ITEM(i), m=S.mist[i];
+  const opt=arr=>arr.length?arr.map(k=>esc(it.opts[k])).join('; '):'(no answer)';
+  const steps='<span class="steps" title="Right answers on schedule">'+[0,1,2].map(k=>'<i class="'+((m.fixed||k<m.stage)?'on':'')+'"></i>').join('')+'</span>';
+  return '<div class="mk '+cls+'"><div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>missed '+m.n+'×</span><span>·</span><span>'+(m.fixed?'fixed':'next '+whenStr(m.due))+'</span>'+steps+'</div>'+
+    '<div class="stem">'+it.s+'</div>'+
+    '<dl class="pick"><dt>You picked</dt><dd class="no">'+opt(m.sel||[])+'</dd><dt>Answer</dt><dd class="yes">'+opt(it.c)+'</dd></dl>'+
+    '<details><summary>Why — the trap</summary><p class="small" style="margin:0">'+it.e+'</p></details>'+
+    '<textarea data-i="'+i+'" id="note-'+i+'" placeholder="Your note: why did you pick it, and what will you check next time?" aria-label="Your note">'+esc(m.note||'')+'</textarea>'+
+    '<div class="foot">'+(m.fixed?'':'<button type="button" class="lnk" data-act="retry" data-i="'+i+'">Answer it again</button>')+'<button type="button" class="lnk" data-act="reread" data-i="'+i+'">Reread '+esc(it.o)+'</button>'+(CARDS.some(c=>c.o===it.o)?'<button type="button" class="lnk" data-act="cards" data-i="'+i+'">Drill '+esc(it.o)+' cards</button>':'')+'</div></div>';
+}
+
+/* ================= PLAN ================= */
+function initPlan(){
+  const wrap=$('#plan'), cw=curWeek();
+  if(PLAN.length)$('#planEyebrow').textContent=PLAN.length+' weeks · '+fmtDate(pdate(PLAN[0].from),{day:'numeric',month:'long'})+' to '+fmtDate(pdate(PLAN[PLAN.length-1].to),{day:'numeric',month:'long',year:'numeric'})+' · checkboxes sync';
+  $('#planNote').innerHTML=A.planNote||'';
+  PLAN.forEach(w=>{
+    const el=document.createElement('div');el.className='wk'+(w.w===cw?' now':'')+(w.w<cw?' past':'');el.id='wk'+w.w;
+    const done=w.t.filter((x,i)=>S.plan[taskId(w.w,i)]).length;
+    el.innerHTML='<div class="hd"><b>Week '+w.w+'</b><span class="d">'+w.d+' · '+done+'/'+w.t.length+'</span>'+(w.w===cw?'<span class="nowtag">This week</span>':'')+(w.exam?'<span class="chip c-un">'+w.exam+'</span>':'')+'<span class="g">'+esc(w.g)+'</span></div>'+
+      '<div class="tasks">'+w.t.map((t,i)=>{const id=taskId(w.w,i),on=!!S.plan[id];return '<div class="tk'+(on?' done':'')+(isExamTask(t)?' exam':'')+'"><input type="checkbox" id="'+id+'" data-t="'+id+'"'+(on?' checked':'')+'><label for="'+id+'">'+esc(t)+'</label></div>';}).join('')+'</div>';
+    wrap.appendChild(el);
+  });
+  wrap.addEventListener('change',e=>{const cb=e.target.closest('input[data-t]');if(!cb)return;if(cb.checked)S.plan[cb.dataset.t]=1;else delete S.plan[cb.dataset.t];cb.closest('.tk').classList.toggle('done',cb.checked);logAct();save();planProg();});
+  planProg();
+  if(cw>1&&cw<=PLAN.length){const n=$('#wk'+cw);if(n)setTimeout(()=>n.scrollIntoView({block:'start'}),30);}
+}
+function planProg(){const p=planTotals();const el=$('#planprog');if(el)el.textContent=p.done+' of '+p.total+' tasks complete ('+Math.round(p.done/p.total*100)+'%).';}
+
+/* ================= SEARCH ================= */
+let IDX=null;
+function buildIndex(){
+  IDX=[];
+  CARDS.forEach((c,i)=>IDX.push({k:'Card · '+c.d,t:strip(c.q),x:strip(c.a),type:'card',ref:i}));
+  ITEMS.forEach(it=>IDX.push({k:'Question · '+it.o,t:strip(it.s),x:it.opts.join(' · '),type:'item',ref:it.id}));
+  NOTE_PAGES.forEach(pid=>{
+    const tpl=$('#tpl-'+pid); if(!tpl)return;
+    const frag=tpl.content, pname=PAGES.find(p=>p.id===pid).n;
+    const heads=$$('h1,h2,h3,h4',frag);
+    heads.forEach((h,hi)=>{
+      let txt='',n=h.nextElementSibling;
+      while(n&&!/^H[1-4]$/.test(n.tagName)){txt+=' '+n.textContent;n=n.nextElementSibling;}
+      IDX.push({k:'Notes · '+pname,t:h.textContent.replace(/\s+/g,' ').trim(),x:txt.replace(/\s+/g,' ').trim(),type:'head',page:pid,ref:hi});
+    });
+    $$('tr',frag).forEach((tr,ri)=>{const td=$$('td',tr);if(td.length<2)return;const cap=tr.closest('table');
+      IDX.push({k:(pid==='numbers'?'Number':'Table')+' · '+pname,t:td[0].textContent.trim(),x:td.slice(1).map(x=>x.textContent.trim()).join(' · '),type:'row',page:pid,ref:ri});});
+  });
+  IDX.forEach(r=>{r.lt=r.t.toLowerCase();r.lx=r.x.toLowerCase();});
+}
+function hi(s,terms){let h=esc(s);terms.forEach(t=>{if(t.length<2)return;h=h.replace(new RegExp('('+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig'),'<mark>$1</mark>');});return h;}
+function snippet(x,terms){const lx=x.toLowerCase();let p=-1;terms.some(t=>{p=lx.indexOf(t);return p>=0;});if(p<0)return x.slice(0,140);const s=Math.max(0,p-50);return (s?'…':'')+x.slice(s,s+160);}
+function search(q){
+  if(!IDX)buildIndex();
+  const terms=q.toLowerCase().split(/\s+/).filter(Boolean);
+  if(!terms.length)return [];
+  const out=[];
+  IDX.forEach(r=>{let sc=0;for(const t of terms){const inT=r.lt.includes(t),inX=r.lx.includes(t);if(!inT&&!inX)return;sc+=inT?3:1;}
+    if(r.lt.includes(q.toLowerCase()))sc+=4; if(r.type==='row')sc+=1; out.push([sc,r]);});
+  return out.sort((a,b)=>b[0]-a[0]).slice(0,30).map(x=>x[1]);
+}
+const qIn=$('#q'), res=$('#results'); let resList=[];
+const fitSearch=()=>{qIn.placeholder=window.innerWidth<600?'Search notes, cards, questions…':'Search notes, numbers, cards and questions — try “occupant load” or “LOD 350”';};
+fitSearch(); window.addEventListener('resize',fitSearch);
+qIn.addEventListener('input',()=>{
+  const q=qIn.value.trim();
+  if(q.length<2){res.hidden=true;return;}
+  resList=search(q); const terms=q.toLowerCase().split(/\s+/);
+  res.innerHTML=resList.length?resList.map((r,i)=>'<button type="button" class="res" data-i="'+i+'"><span class="k">'+esc(r.k)+'</span><span class="t">'+hi(r.t.slice(0,140),terms)+'</span><span class="x">'+hi(snippet(r.x,terms),terms)+'</span></button>').join(''):'<div class="resnone">Nothing matches “'+esc(q)+'”. Try a shorter term, a code section like 1004.5, or an objective like PPD 2.2.</div>';
+  res.hidden=false;
+});
+qIn.addEventListener('keydown',e=>{if(e.key==='Escape'){qIn.value='';res.hidden=true;qIn.blur();}if(e.key==='ArrowDown'){const f=$('.res',res);if(f){e.preventDefault();f.focus();}}if(e.key==='Enter'){const f=$('.res',res);if(f)f.click();}});
+res.addEventListener('keydown',e=>{const b=e.target.closest('.res');if(!b)return;if(e.key==='ArrowDown'){e.preventDefault();(b.nextElementSibling||b).focus();}if(e.key==='ArrowUp'){e.preventDefault();(b.previousElementSibling||qIn).focus();}if(e.key==='Escape'){res.hidden=true;qIn.focus();}});
+res.addEventListener('click',e=>{const b=e.target.closest('.res');if(!b)return;openResult(resList[+b.dataset.i]);res.hidden=true;});
+document.addEventListener('click',e=>{if(!e.target.closest('.srch'))res.hidden=true;});
+qIn.addEventListener('focus',()=>{if(qIn.value.trim().length>=2&&resList.length)res.hidden=false;});
+function openResult(r){
+  if(r.type==='card'){const c=CARDS[r.ref];const s=cstate(c);
+    modal('<div class="lbl">'+esc(c.o)+' · '+esc(c.d)+(s?' · '+BOXNAME[s.b]:' · new')+'</div><div class="q">'+c.q+'</div><div class="a">'+c.a+'</div><div class="row"><button type="button" class="btn pri" data-a="deck">Study this deck</button>'+(odiv(c.o)?'<button type="button" class="btn" data-a="notes">Read the notes</button>':'')+'<button type="button" class="btn" data-a="x">Close</button></div>',
+      a=>{if(a==='deck'){S.deck=c.d;S.fcMode='all';save();go('cards');}if(a==='notes')gotoObj(c.o);});return;}
+  if(r.type==='item'){S.qdiv='';S.qmode='all';go('practice',{focus:r.ref});return;}
+  go(r.page);
+  const el=r.type==='head'?$$('h1,h2,h3,h4',view)[r.ref]:$$('tr',view)[r.ref];
+  setTimeout(()=>flashEl(el),60);
+}
+
+boot();
+})();
+</script>

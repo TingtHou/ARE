@@ -1,0 +1,79 @@
+
+<template id="tpl-today">
+<div class="eyebrow" id="tdEyebrow">Today</div>
+<h1 class="t" id="tdTitle">Your study desk</h1>
+<p class="lede" id="tdLede">Three sittings, fourteen weeks. This page tells you what to do next and where you are weakest.</p>
+<div class="exams" id="tdExams"></div>
+<div class="panels">
+  <div class="panel" id="tdWeek"></div>
+  <div class="panel">
+    <h3>Flashcards</h3>
+    <div class="sub">Spaced repetition. Cards you rate Good come back later; cards you miss come back today.</div>
+    <div class="stats" id="tdCardStats"></div>
+    <div class="divbars" id="tdCardBars"></div>
+    <div class="row"><button type="button" class="btn pri" id="tdReview">Review cards</button></div>
+  </div>
+  <div class="panel">
+    <h3>Practice questions</h3>
+    <div class="sub">Multiple choice and check-all-that-apply, in NCARB's current formats.</div>
+    <div class="stats" id="tdQuizStats"></div>
+    <div class="divbars" id="tdQuizBars"></div>
+    <div class="row"><button type="button" class="btn pri" id="tdTimed">Timed set of 10</button><button type="button" class="btn" id="tdMissed">Retry missed</button></div>
+  </div>
+  <div class="panel pwide">
+    <h3>Weak spots</h3>
+    <div class="sub">Objectives where you have missed questions or rated cards Again or Shaky.</div>
+    <ul class="weak" id="tdWeak"></ul>
+  </div>
+  <div class="panel heatpanel">
+    <h3>Last 28 days</h3>
+    <div class="sub" id="tdStreak">Cards reviewed and questions answered per day.</div>
+    <div class="heat" id="tdHeat"></div>
+    <div class="heatlbl"><span id="tdHeatFrom"></span><span>today</span></div>
+  </div>
+</div>
+</template>
+
+<template id="tpl-cards">
+<div class="eyebrow" id="fcEyebrow">Spaced repetition</div>
+<h1 class="t">Flashcards</h1>
+<p class="lede">Cards that are due come first, weakest first, then new cards. <strong>Again</strong> brings a card back in a few minutes, <strong>Shaky</strong> tomorrow, <strong>Good</strong> after a longer gap that grows each time. Keys: Space to reveal, then 1, 2 or 3.</p>
+<div class="fcwrap">
+  <div class="fcbar">
+    <select class="sel" id="deckSel" aria-label="Deck"></select>
+    <div class="seg" id="fcMode" role="group" aria-label="Session">
+      <button type="button" data-m="due">Due + new</button>
+      <button type="button" data-m="all">Whole deck</button>
+    </div>
+  </div>
+  <div id="fcStage"></div>
+  <div class="fcstat" id="fcStat"></div>
+</div>
+</template>
+
+<template id="tpl-practice">
+<div class="eyebrow" id="qzEyebrow">Every explanation tagged to its objective</div>
+<h1 class="t">Practice</h1>
+<p class="lede">Work through the bank at your own pace, or run a timed set at exam pace — about 2.4 minutes per item — with answers held back until you finish. Check-all-that-apply scores only if every selection is right, as on the exam.</p>
+<div id="qzArea"></div>
+</template>
+
+<template id="tpl-mistakes">
+<div class="eyebrow">Your mistake log · questions come back on a schedule until they stick</div>
+<h1 class="t">Mistakes</h1>
+<p class="lede">Every question you miss lands here. It comes back <strong>tomorrow</strong>, then in <strong>3 days</strong>, then in <strong>7</strong>. Answer it right all three times and it counts as fixed; miss it again and the clock restarts. Missing a question also puts that objective's flashcards into today's review.</p>
+<div class="stats" id="mkStats" style="max-width:560px"></div>
+<div class="row" id="mkActs" style="margin-bottom:8px"></div>
+<div id="mkList"></div>
+<h2 class="s">Cards you keep missing</h2>
+<p class="small">Cards you have rated Again more than once. These are the facts that are not sticking — try writing the answer out before you reveal it.</p>
+<div id="mkCards"></div>
+</template>
+
+<template id="tpl-plan">
+<div class="eyebrow" id="planEyebrow">Checkboxes sync</div>
+<h1 class="t">The plan</h1>
+<div class="lede" id="planNote"></div>
+<p class="small" id="planprog"></p>
+<div id="plan"></div>
+</template>
