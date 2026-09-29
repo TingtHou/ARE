@@ -342,6 +342,15 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .leech .c{font-family:var(--mono);font-size:12px;color:var(--flag);min-width:34px}
 .leech .t{flex:1 1 auto;min-width:0}
 
+/* ---------- responsive: wide desktops ---------- */
+#main{width:100%;max-width:1440px;justify-self:center}
+@media (min-width:1500px){
+  #shell{grid-template-columns:248px minmax(0,1fr)}
+  #main{padding-inline:48px}
+  .panels{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+  .fcwrap{max-width:860px}
+}
+
 /* ---------- responsive: phones and tablets ---------- */
 .exams{grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr))}
 .panels{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
