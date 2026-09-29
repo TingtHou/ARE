@@ -428,6 +428,30 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .pvlist code{font-family:var(--mono);font-size:11px;color:var(--accent-ink);margin-right:6px}
 .pvlist span{color:var(--ink-3);font-size:11.5px;margin-left:6px}
 
+/* ---------- personal material ---------- */
+.edf{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.edrow{display:flex;gap:10px;flex-wrap:wrap}
+.edf textarea,.edf select.sel{width:100%;font-family:var(--sans);font-size:14px;padding:9px 11px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);color:var(--ink);resize:vertical}
+.edf textarea:focus,.edf select:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);background:var(--surface)}
+.edf .ahint code{font-family:var(--mono);font-size:11px;background:var(--rule-2);padding:0 4px;border-radius:3px}
+.edf #edActs{margin-top:10px}
+#modal:has(.edf){width:min(720px,calc(100vw - 32px))}
+.mypt{margin:10px 0 14px;padding:10px 14px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--rule));border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;max-width:74ch;font-size:15px}
+.mypt p:last-child,.mypt ul:last-child,.mypt ol:last-child{margin-bottom:0}
+.myhd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.myk{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink)}
+.myhd .lnk{margin-left:auto;font-size:12px}
+.mybox{margin:4px 0 22px;padding:12px 14px;border:1px dashed var(--rule);border-radius:9px;max-width:80ch;font-family:var(--sans);font-size:14px}
+.mybox .mypt{font-family:var(--serif)}
+.addpt{margin-left:8px;vertical-align:2px;font-family:var(--sans);font-size:11px;font-weight:600;padding:1px 7px;border:1px dashed var(--rule);border-radius:99px;background:none;color:var(--ink-3);cursor:pointer;opacity:0;transition:opacity .15s}
+h3:hover .addpt,.addpt:focus-visible{opacity:1}
+@media (hover:none){.addpt{opacity:1}}
+.mrow{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--rule-2);font-family:var(--sans);font-size:13.5px;max-width:980px}
+.mrow .obj{flex:0 0 auto;min-width:64px;text-align:center}
+.mrow .mt{flex:1 1 auto;min-width:0}
+.mrow .mb{flex:0 0 auto;display:flex;gap:12px}
+.fcedit{margin-left:8px;font-size:11px;letter-spacing:0;text-transform:none}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1840px;justify-self:center}
 @media (min-width:1200px){
@@ -582,6 +606,7 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
       <button type="button" data-m="due">Due + new</button>
       <button type="button" data-m="all">Whole deck</button>
     </div>
+    <button type="button" class="btn sm" id="fcNew">+ New card</button>
   </div>
   <div id="fcStage"></div>
   <div class="fcstat" id="fcStat"></div>
@@ -615,6 +640,13 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 <div id="plan"></div>
 </template>
 
+<template id="tpl-mine">
+<div class="eyebrow">Only you see this · saved to your account</div>
+<h1 class="t">My material</h1>
+<p class="lede">Your own study points, flashcards and questions, plus any shared items you changed or hid. None of it affects anyone else. Points tied to an objective also appear under that heading in the notes.</p>
+<div id="mineBody"></div>
+</template>
+
 <!-- Study material lives in material/ — edit those files, not this page. Accounts are configured in config.js. -->
 <script src="config.js"></script>
 <script src="material/plan.js"></script>
@@ -638,7 +670,8 @@ const PAGES=[
  {id:'pa',g:'Notes',n:'Programming & Analysis',i:'PA'},
  {id:'ppd',g:'Notes',n:'Planning & Design',i:'PPD'},
  {id:'pdd',g:'Notes',n:'Development & Docs',i:'PDD'},
- {id:'numbers',g:'Notes',n:'Numbers',i:'#'}
+ {id:'numbers',g:'Notes',n:'Numbers',i:'#'},
+ {id:'mine',g:'Notes',n:'My material',i:'+'}
 ];
 const NOTE_PAGES=['overview','objectives','pa','ppd','pdd','numbers'];
 const DIVS=['PA','PPD','PDD'];
@@ -647,12 +680,12 @@ const DIVS=['PA','PPD','PDD'];
 const A=window.ARE||{};
 const pdate=s=>{const p=String(s||'').split('-').map(Number);return new Date(p[0],(p[1]||1)-1,p[2]||1);};
 const fmtDate=(d,o)=>d.toLocaleDateString(undefined,o||{weekday:'short',day:'numeric',month:'short'});
-const CARDS=(A.cards||[]).filter(c=>c&&c.id!=null&&c.q&&c.a).map(c=>Object.assign({},c,{id:String(c.id),d:c.d||'Other',o:c.o||'—'}));
-const ITEMS=(A.questions||[]).filter(q=>q&&q.id!=null&&q.s&&Array.isArray(q.opts)&&Array.isArray(q.c)).map(q=>Object.assign({},q,{id:String(q.id),t:q.t==='cata'?'cata':'mc',e:q.e||''}));
+const BASE_CARDS=(A.cards||[]).filter(c=>c&&c.id!=null&&c.q&&c.a).map(c=>Object.assign({},c,{id:String(c.id),d:c.d||'Other',o:c.o||'—'}));
+const BASE_ITEMS=(A.questions||[]).filter(q=>q&&q.id!=null&&q.s&&Array.isArray(q.opts)&&Array.isArray(q.c)).map(q=>Object.assign({},q,{id:String(q.id),t:q.t==='cata'?'cata':'mc',e:q.e||''}));
 const PLAN=(A.plan||[]).slice().sort((a,b)=>a.w-b.w);
 const WEIGHTS=A.weights||{};
 const EXAMS=(A.exams||[]).map(e=>{const dt=pdate(e.date);return {d:e.d,n:e.name||e.d,date:dt,items:e.items||'',label:fmtDate(dt)};});
-const ITEM_MAP={}; ITEMS.forEach(it=>{ITEM_MAP[it.id]=it;});
+let CARDS=BASE_CARDS, ITEMS=BASE_ITEMS, ITEM_MAP={}, DECKS=[];
 const ITEM=id=>ITEM_MAP[id];
 const PW=w=>PLAN.find(x=>x.w===w);
 /* problems in the material files, shown on Today so edits are easy to check */
@@ -661,10 +694,10 @@ const MATERR=(()=>{
   if(!A.cards)out.push('material/cards.js did not load — flashcards are missing');
   if(!A.questions)out.push('material/questions.js did not load — practice questions are missing');
   if(!A.plan)out.push('material/plan.js did not load — plan and exam dates are missing');
-  seen(CARDS,'cards.js'); seen(ITEMS,'questions.js');
+  seen(BASE_CARDS,'cards.js'); seen(BASE_ITEMS,'questions.js');
   (A.cards||[]).forEach((c,i)=>{if(!c||c.id==null||!c.q||!c.a)out.push('cards.js: card #'+(i+1)+' is missing id, q or a and was skipped');});
   (A.questions||[]).forEach((q,i)=>{if(!q||q.id==null||!q.s||!Array.isArray(q.opts)||!Array.isArray(q.c))out.push('questions.js: question #'+(i+1)+' is missing id, s, opts or c and was skipped');});
-  ITEMS.forEach(q=>{if(q.c.some(k=>k<0||k>=q.opts.length))out.push('questions.js: '+q.id+' has a correct answer number outside its options (count from 0)');
+  BASE_ITEMS.forEach(q=>{if(q.c.some(k=>k<0||k>=q.opts.length))out.push('questions.js: '+q.id+' has a correct answer number outside its options (count from 0)');
     if(q.t==='mc'&&q.c.length!==1)out.push('questions.js: '+q.id+' is multiple choice but lists '+q.c.length+' correct answers — use t:\'cata\' or one answer');
     if(!DIVS.includes(q.d))out.push('questions.js: '+q.id+' has division \''+q.d+'\' — use PA, PPD or PDD');});
   EXAMS.forEach(e=>{if(isNaN(e.date))out.push('plan.js: exam '+e.d+' has an unreadable date — use YYYY-MM-DD');});
@@ -684,7 +717,56 @@ const ckey=c=>c.id;
 const odiv=o=>{const p=(o||'').split(' ')[0];return DIVS.includes(p)?p:null;};
 const cdiv=c=>odiv(c.o)||(c.d.split(' ')[0]);
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
-const DECKS=[...new Set(CARDS.map(c=>c.d))];
+/* DECKS is rebuilt with the material in rebuildMaterial() */
+/* ---------- personal material: each person's own edits layered over the shared base ----------
+   S.custom = { cards:{id:{d,o,q,a,qraw,araw}|{hidden:true}}, items:{id:{d,o,t,s,opts,c,e,sraw,eraw}|{hidden:true}}, points:{id:{div,obj,text,at}} }
+   An entry with a base id overrides or hides that item; new entries use "u…" ids. */
+let CUSTERR=[];
+const newUid=()=>'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+function rebuildMaterial(){
+  const C=(S&&S.custom)||{}, cc=C.cards||{}, ci=C.items||{};
+  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw'];
+  const pickk=(o,ks)=>{const r={};ks.forEach(k=>{if(o[k]!=null)r[k]=o[k];});return r;};
+  CARDS=[]; BASE_CARDS.forEach(c=>{const o=cc[c.id];if(o&&o.hidden)return;CARDS.push(o?Object.assign({},c,pickk(o,CK),{edited:true}):c);});
+  Object.keys(cc).filter(k=>!BASE_CARDS.some(b=>b.id===k)&&!cc[k].hidden&&cc[k].q&&cc[k].a).forEach(k=>CARDS.push(Object.assign({o:'—',d:'My cards'},pickk(cc[k],CK),{id:k,mine:true})));
+  ITEMS=[]; BASE_ITEMS.forEach(q=>{const o=ci[q.id];if(o&&o.hidden)return;ITEMS.push(o?Object.assign({},q,pickk(o,IK),{edited:true}):q);});
+  Object.keys(ci).filter(k=>!BASE_ITEMS.some(b=>b.id===k)&&!ci[k].hidden).forEach(k=>ITEMS.push(Object.assign({t:'mc',e:''},pickk(ci[k],IK),{id:k,mine:true})));
+  CUSTERR=[];
+  ITEMS=ITEMS.filter(q=>{const ok=q.s&&Array.isArray(q.opts)&&q.opts.length>=2&&Array.isArray(q.c)&&q.c.length&&q.c.every(k=>k>=0&&k<q.opts.length);if(!ok&&q.mine)CUSTERR.push('Your question “'+strip(q.s||'(no text)').slice(0,50)+'” is missing options or a correct answer and is hidden until you fix it.');return ok;});
+  ITEM_MAP={}; ITEMS.forEach(it=>{ITEM_MAP[it.id]=it;});
+  DECKS=[...new Set(CARDS.map(c=>c.d))];
+  if(typeof IDX!=='undefined')IDX=null;          // search index is rebuilt on next search
+}
+function customSet(kind,id,val){                  // val null removes the entry (restores the base item)
+  S.custom=S.custom||{}; S.custom[kind]=S.custom[kind]||{};
+  if(val==null)delete S.custom[kind][id]; else S.custom[kind][id]=val;
+  rebuildMaterial(); save();
+  const size=JSON.stringify(S).length;
+  if(size>250000)toast('Your saved study data is getting large ('+Math.round(size/1000)+' KB). Remove unused items to keep syncing fast.');
+}
+const myPoints=()=>Object.keys((S.custom&&S.custom.points)||{}).map(k=>Object.assign({id:k},S.custom.points[k])).sort((a,b)=>(a.at||0)-(b.at||0));
+/* small markup: blank line = paragraph, "- " bullets, "1. " numbered, **bold**, *italic* */
+function inlineMd(s){return esc(s).replace(/&lt;(\/?)(sub|sup)&gt;/g,'<$1$2>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g,'$1<em>$2</em>');}
+function md2html(t){
+  return String(t||'').replace(/\r/g,'').split(/\n\s*\n/).map(b=>{
+    const ls=b.split('\n').filter(x=>x.trim()); if(!ls.length)return '';
+    if(ls.every(l=>/^\s*[-•]\s+/.test(l)))return '<ul>'+ls.map(l=>'<li>'+inlineMd(l.replace(/^\s*[-•]\s+/,''))+'</li>').join('')+'</ul>';
+    if(ls.every(l=>/^\s*\d+[.)]\s+/.test(l)))return '<ol>'+ls.map(l=>'<li>'+inlineMd(l.replace(/^\s*\d+[.)]\s+/,''))+'</li>').join('')+'</ol>';
+    return '<p>'+ls.map(inlineMd).join('<br>')+'</p>';
+  }).join('');
+}
+function html2md(h){
+  const d=document.createElement('div'); d.innerHTML=h||''; const out=[];
+  const inl=n=>{let s='';n.childNodes.forEach(c=>{if(c.nodeType===3){s+=c.textContent;return;}if(c.nodeType!==1)return;const t=c.tagName,x=inl(c);
+    if(t==='STRONG'||t==='B')s+='**'+x+'**';else if(t==='EM'||t==='I')s+='*'+x+'*';else if(t==='BR')s+='\n';else if(t==='SUB'||t==='SUP')s+='<'+t.toLowerCase()+'>'+x+'</'+t.toLowerCase()+'>';else s+=x;});return s;};
+  d.childNodes.forEach(n=>{
+    if(n.nodeType===3){if(n.textContent.trim())out.push(n.textContent.trim());return;}
+    if(n.nodeType!==1)return;
+    if(n.tagName==='UL'||n.tagName==='OL')out.push($$('li',n).map((li,i)=>(n.tagName==='UL'?'- ':(i+1)+'. ')+inl(li).trim()).join('\n'));
+    else out.push(inl(n).trim());
+  });
+  return out.join('\n\n');
+}
 async function loadNotes(){
   const got=await Promise.all(NOTE_PAGES.map(id=>fetch('material/notes/'+id+'.html',{cache:'no-cache'}).then(r=>r.ok?r.text():null).catch(()=>null)));
   NOTE_PAGES.forEach((id,i)=>{
@@ -715,10 +797,11 @@ const MGAP=[1*DAY,3*DAY,7*DAY]; // mistake re-ask gaps: after a miss, then after
 function normalize(){
   S.mist=S.mist||{}; S.cardMiss=S.cardMiss||{};
   // progress saved before cards/questions had ids: cards were keyed by deck|question, questions by position
-  const legacy={}; CARDS.forEach(c=>{legacy[c.d+'|'+c.q.slice(0,60)]=c.id;});
+  const legacy={}; BASE_CARDS.forEach(c=>{legacy[c.d+'|'+c.q.slice(0,60)]=c.id;});
   ['cards','cardMiss'].forEach(f=>Object.keys(S[f]).forEach(k=>{const n=legacy[k];if(n&&n!==k){if(!S[f][n])S[f][n]=S[f][k];delete S[f][k];}}));
   ['ans','mist'].forEach(f=>Object.keys(S[f]).forEach(k=>{if(/^\d+$/.test(k)){if(!S[f]['q'+k])S[f]['q'+k]=S[f][k];delete S[f][k];}}));
   Object.keys(S.ans).forEach(i=>{const a=S.ans[i];if(a&&!a.ok&&a.sel&&a.sel.length&&!S.mist[i])S.mist[i]={n:1,sel:a.sel,at:a.at||Date.now(),due:Date.now(),stage:0,fixed:false,note:''};});
+  rebuildMaterial();
 }
 let db=null, uid=null, saveT=null, synced=false, curPage=null;
 function lsLoad(id){try{const r=localStorage.getItem(lsKey(id||PROF.cur));return r?JSON.parse(r):null;}catch(e){return null;}}
@@ -880,7 +963,7 @@ function go(id,opts){
   stopTimer();
   curPage=id;
   $$('#nav button').forEach(b=>b.setAttribute('aria-current',String(b.dataset.p===id)));
-  view.innerHTML='';
+  view.innerHTML=''; view.onclick=null;
   const tpl=$('#tpl-'+id); if(tpl)view.appendChild(tpl.content.cloneNode(true));
   if(location.hash.slice(1)!==id){try{history.replaceState(null,'','#'+id);}catch(e){}}
   if(!opts.keepScroll)window.scrollTo(0,0);
@@ -890,6 +973,7 @@ function go(id,opts){
   else if(id==='practice')initPractice(opts);
   else if(id==='mistakes')initMistakes();
   else if(id==='plan')initPlan();
+  else if(id==='mine')initMine(opts);
   else initNotes(id);
 }
 function route(keep){go((location.hash||'').slice(1)||'today',{keepScroll:keep});}
@@ -922,6 +1006,7 @@ function initToday(){
   const XS=myExams();
   const next=XS.find(e=>!S.passed[e.d]&&midnight(e.date)>=t);
   if(MATERR.length)$('#tdExams').insertAdjacentHTML('beforebegin','<div class="rl"><div class="hd">Check the material files</div><ul>'+MATERR.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>');
+  if(CUSTERR.length)$('#tdExams').insertAdjacentHTML('beforebegin','<div class="rl"><div class="hd">Check your own material</div><ul>'+CUSTERR.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul><a class="btn sm" href="#mine">Open My material</a></div>');
   if(PW(w)){$('#tdTitle').textContent='Week '+w+' of '+PLAN.length+(next?' · '+Math.round((midnight(next.date)-t)/DAY)+' days to '+next.d:'');$('#tdLede').textContent=PW(w).g;}
   else if(w===0&&PLAN.length){$('#tdTitle').textContent='The plan starts '+fmtDate(pdate(PLAN[0].from),{day:'numeric',month:'long'});}
   else{$('#tdTitle').textContent='Plan complete';$('#tdLede').textContent='All three sittings are behind you. Keep reviewing any division you still need to retake.';}
@@ -1066,6 +1151,26 @@ function initNotes(id){
   if(id==='overview')drawWeights();
   // make objective chips clickable to drill that objective
   $$('h3 .obj',view).forEach(ch=>{const o=ch.textContent.trim();if(CARDS.some(c=>c.o===o)||ITEMS.some(i=>i.o===o)){ch.classList.add('go');ch.title='Drill '+o;ch.addEventListener('click',()=>openObjDrill(o));}});
+  // your own study points: under the matching objective heading, the rest in a box at the top
+  const D=id.toUpperCase();
+  if(DIVS.includes(D)){
+    const pts=myPoints().filter(p=>p.div===D), loose=[];
+    pts.forEach(p=>{
+      const chip=p.obj&&$$('h3 .obj',view).find(c=>c.textContent.trim()===D+' '+p.obj);
+      if(chip)chip.closest('h3').insertAdjacentHTML('afterend',pointHtml(p,true)); else loose.push(p);
+    });
+    const anchor=$('.toc',view)||$('.lede',view);
+    if(anchor)anchor.insertAdjacentHTML('afterend','<div class="mybox"><div class="row" style="justify-content:space-between"><b>My points for '+D+'</b><button type="button" class="btn sm" data-padd="1">+ Add a point</button></div>'+
+      (loose.length?loose.map(p=>pointHtml(p,true)).join(''):(pts.length?'':'<p class="small" style="margin:6px 0 0;color:var(--ink-2)">Add your own notes here. Give a point an objective (like '+D+' 4.3) and it appears under that heading.</p>'))+'</div>');
+    view.onclick=e=>{
+      const a=e.target.closest('[data-padd]'); if(a){pointEditor(null,{div:D},()=>go(id,{keepScroll:true}));return;}
+      const ed=e.target.closest('[data-pedit]'); if(ed){const p=myPoints().find(x=>x.id===ed.dataset.pedit);if(p)pointEditor(p,null,()=>go(id,{keepScroll:true}));}
+    };
+    // an "add a point" shortcut on each objective heading
+    $$('h3 .obj',view).forEach(ch=>{const m=ch.textContent.trim().match(/^(PA|PPD|PDD) (\d+\.\d+)$/);if(!m)return;const h=ch.closest('h3');if(h.querySelector('.addpt'))return;
+      h.insertAdjacentHTML('beforeend','<button type="button" class="addpt" title="Add my point to '+m[0]+'" aria-label="Add my point to '+m[0]+'">+ point</button>');
+      h.lastElementChild.onclick=()=>pointEditor(null,{div:m[1],obj:m[2]},()=>go(id,{keepScroll:true}));});
+  }
 }
 function drawWeights(){
   Object.keys(WEIGHTS).forEach(k=>{
@@ -1241,6 +1346,137 @@ async function doSignIn(){
   setSession(j.AuthenticationResult,authMem.email); authMem.pass=''; enterApp();
 }
 
+/* ================= EDITORS: your own cards, questions and study points ================= */
+const divSel=(id,val,withOther)=>'<select class="sel" id="'+id+'">'+DIVS.concat(withOther?['—']:[]).map(d=>'<option value="'+d+'"'+(d===val?' selected':'')+'>'+(d==='—'?'No division':d)+'</option>').join('')+'</select>';
+const MDHINT='<p class="ahint">Blank line = new paragraph · start lines with <code>- </code> for bullets or <code>1. </code> for steps · <code>**bold**</code></p>';
+function splitObj(o){const d=odiv(o);return {div:d||'—',obj:d?(String(o).split(' ')[1]||''):''};}
+function joinObj(div,obj){obj=String(obj||'').trim().replace(/^(PA|PPD|PDD)\s*/i,'');return div==='—'?'—':(obj?div+' '+obj:div);}
+const oneLine=t=>inlineMd(String(t||'').trim()).replace(/\n/g,'<br>');
+function edConfirm(m,msg,yesLabel,onYes){const box=$('#edActs',m);box.innerHTML='<div class="confirm" style="margin:0">'+msg+'<div class="row" style="margin-top:8px"><button type="button" class="btn sm pri" data-a="yes">'+yesLabel+'</button><button type="button" class="btn sm" data-a="back">Cancel</button></div></div>';box._yes=onYes;}
+function edErr(m,t){const e=$('#edErr',m);e.textContent=t;e.hidden=false;}
+
+function cardEditor(c,done){
+  const isNew=!c, base=c&&!c.mine;
+  const so=c?splitObj(c.o):{div:(S.deck||'').startsWith('div:')?S.deck.slice(4):'PA',obj:''};
+  const deck=c?c.d:(S.deck&&!S.deck.startsWith('div:')?S.deck:'My cards');
+  const qv=c?(c.qraw!=null?c.qraw:html2md(c.q)):'', av=c?(c.araw!=null?c.araw:html2md(c.a)):'';
+  const acts='<button type="submit" class="btn pri">Save</button><button type="button" class="btn" data-a="close">Cancel</button>'+
+    (base&&c.edited?'<button type="button" class="btn" data-a="restore">Restore original</button>':'')+
+    (base?'<button type="button" class="btn" data-a="hide">Hide this card</button>':'')+(c&&c.mine?'<button type="button" class="btn" data-a="del" style="color:var(--flag)">Delete</button>':'');
+  modalForm('<div class="lbl">'+(isNew?'New flashcard':base?'Edit flashcard · only you see your changes':'Edit your flashcard')+'</div>'+
+    '<form class="edf" id="edForm">'+
+    '<div class="edrow"><label class="af" style="flex:2 1 220px"><span>Deck</span><input id="edDeck" list="edDecks" value="'+esc(deck)+'" required></label><datalist id="edDecks">'+DECKS.map(d=>'<option value="'+esc(d)+'">').join('')+'</datalist>'+
+    '<label class="af" style="flex:1 1 110px"><span>Division</span>'+divSel('edDiv',so.div,true)+'</label><label class="af" style="flex:1 1 110px"><span>Objective</span><input id="edObj" value="'+esc(so.obj)+'" placeholder="e.g. 4.3"></label></div>'+
+    '<label class="af"><span>Question</span><textarea id="edQ" rows="2" required>'+esc(qv)+'</textarea></label>'+
+    '<label class="af"><span>Answer</span><textarea id="edA" rows="7" required>'+esc(av)+'</textarea></label>'+MDHINT+
+    '<div class="aerr" id="edErr" hidden></div><div class="row" id="edActs">'+acts+'</div></form>',
+  (a,m,close)=>{
+    if(a==='close'){close();return;}
+    if(a==='back'){close();cardEditor(c,done);return;}
+    if(a==='yes'){const f=$('#edActs',m)._yes;close();if(f)f();if(done)done();return;}
+    if(a==='hide')edConfirm(m,'Hide this card from your flashcards? Your rating is kept, and you can bring it back from My material.','Hide card',()=>{customSet('cards',c.id,{hidden:true});toast('Card hidden');});
+    if(a==='restore')edConfirm(m,'Throw away your changes and go back to the original card?','Restore original',()=>{customSet('cards',c.id,null);toast('Original card restored');});
+    if(a==='del')edConfirm(m,'Delete this card? This cannot be undone.','Delete card',()=>{customSet('cards',c.id,null);toast('Card deleted');});
+  },
+  (form,m,close)=>{
+    const q=$('#edQ',m).value.trim(),an=$('#edA',m).value.trim(),d=$('#edDeck',m).value.trim();
+    if(!d||!q||!an){edErr(m,'Fill in the deck, the question and the answer.');return;}
+    const id=c?c.id:newUid();
+    customSet('cards',id,{d:d.slice(0,60),o:joinObj($('#edDiv',m).value,$('#edObj',m).value),q:oneLine(q),a:md2html(an),qraw:q,araw:an,at:Date.now()});
+    close();toast(isNew?'Card added to '+d:'Card saved');if(done)done();
+  });
+}
+
+function itemEditor(it,done){
+  const isNew=!it, base=it&&!it.mine, so=it?splitObj(it.o):{div:S.qdiv||'PA',obj:''};
+  const sv=it?(it.sraw!=null?it.sraw:html2md(it.s)):'', ev=it?(it.eraw!=null?it.eraw:html2md(it.e)):'';
+  const ov=it?it.opts.map((o,i)=>(it.c.includes(i)?'* ':'')+o).join('\n'):'* \n\n\n';
+  const acts='<button type="submit" class="btn pri">Save</button><button type="button" class="btn" data-a="close">Cancel</button>'+
+    (base&&it.edited?'<button type="button" class="btn" data-a="restore">Restore original</button>':'')+
+    (base?'<button type="button" class="btn" data-a="hide">Hide this question</button>':'')+(it&&it.mine?'<button type="button" class="btn" data-a="del" style="color:var(--flag)">Delete</button>':'');
+  modalForm('<div class="lbl">'+(isNew?'New practice question':base?'Edit question · only you see your changes':'Edit your question')+'</div>'+
+    '<form class="edf" id="edForm">'+
+    '<div class="edrow"><label class="af" style="flex:1 1 110px"><span>Division</span>'+divSel('edDiv',so.div==='—'?'PA':so.div,false)+'</label><label class="af" style="flex:1 1 110px"><span>Objective</span><input id="edObj" value="'+esc(so.obj)+'" placeholder="e.g. 2.2"></label>'+
+    '<label class="af" style="flex:2 1 220px"><span>Type</span><select class="sel" id="edT"><option value="mc"'+(!it||it.t==='mc'?' selected':'')+'>Multiple choice (one answer)</option><option value="cata"'+(it&&it.t==='cata'?' selected':'')+'>Check all that apply</option></select></label></div>'+
+    '<label class="af"><span>Question</span><textarea id="edS" rows="3" required>'+esc(sv)+'</textarea></label>'+
+    '<label class="af"><span>Options, one per line · put * before each correct one</span><textarea id="edO" rows="5" required>'+esc(ov)+'</textarea></label>'+
+    '<label class="af"><span>Explanation · why the answer is right and the traps are wrong</span><textarea id="edE" rows="4">'+esc(ev)+'</textarea></label>'+
+    '<div class="aerr" id="edErr" hidden></div><div class="row" id="edActs">'+acts+'</div></form>',
+  (a,m,close)=>{
+    if(a==='close'){close();return;}
+    if(a==='back'){close();itemEditor(it,done);return;}
+    if(a==='yes'){const f=$('#edActs',m)._yes;close();if(f)f();if(done)done();return;}
+    if(a==='hide')edConfirm(m,'Hide this question from your practice bank? Your answers are kept, and you can bring it back from My material.','Hide question',()=>{customSet('items',it.id,{hidden:true});toast('Question hidden');});
+    if(a==='restore')edConfirm(m,'Throw away your changes and go back to the original question?','Restore original',()=>{customSet('items',it.id,null);toast('Original question restored');});
+    if(a==='del')edConfirm(m,'Delete this question? This cannot be undone.','Delete question',()=>{customSet('items',it.id,null);toast('Question deleted');});
+  },
+  (form,m,close)=>{
+    const s=$('#edS',m).value.trim(), e=$('#edE',m).value.trim(), t=$('#edT',m).value;
+    const lines=$('#edO',m).value.split('\n').map(x=>x.trim()).filter(x=>x.replace(/^\*\s*/,''));
+    const opts=lines.map(x=>x.replace(/^\*\s*/,'')), c=[]; lines.forEach((x,i)=>{if(/^\*/.test(x))c.push(i);});
+    if(!s){edErr(m,'Write the question.');return;}
+    if(opts.length<2){edErr(m,'Give at least two options, one per line.');return;}
+    if(!c.length){edErr(m,'Mark the correct option with * at the start of its line.');return;}
+    if(t==='mc'&&c.length!==1){edErr(m,'Multiple choice needs exactly one correct option. Mark one with *, or switch the type to Check all that apply.');return;}
+    const id=it?it.id:newUid();
+    customSet('items',id,{d:$('#edDiv',m).value,o:joinObj($('#edDiv',m).value,$('#edObj',m).value),t,s:oneLine(s),opts,c,e:e?md2html(e).replace(/^<p>([\s\S]*)<\/p>$/,'$1'):'',sraw:s,eraw:e,at:Date.now()});
+    close();toast(isNew?'Question added':'Question saved');if(done)done();
+  });
+}
+
+function pointEditor(p,preset,done){
+  const isNew=!p; preset=preset||{};
+  const div=p?p.div:(preset.div||'PA'), obj=p?p.obj:(preset.obj||'');
+  modalForm('<div class="lbl">'+(isNew?'New study point':'Edit study point')+'</div>'+
+    '<form class="edf" id="edForm"><div class="edrow"><label class="af" style="flex:1 1 140px"><span>Division</span><select class="sel" id="edDiv">'+DIVS.concat(['GEN']).map(d=>'<option value="'+d+'"'+(d===div?' selected':'')+'>'+(d==='GEN'?'General':d)+'</option>').join('')+'</select></label>'+
+    '<label class="af" style="flex:1 1 140px"><span>Objective (optional)</span><input id="edObj" value="'+esc(obj)+'" placeholder="e.g. 4.3"></label></div>'+
+    '<label class="af"><span>Your point</span><textarea id="edP" rows="6" required>'+esc(p?p.text:'')+'</textarea></label>'+MDHINT+
+    '<p class="ahint">With an objective, the point also shows under that heading in the notes.</p>'+
+    '<div class="aerr" id="edErr" hidden></div><div class="row" id="edActs"><button type="submit" class="btn pri">Save</button><button type="button" class="btn" data-a="close">Cancel</button>'+(p?'<button type="button" class="btn" data-a="del" style="color:var(--flag)">Delete</button>':'')+'</div></form>',
+  (a,m,close)=>{
+    if(a==='close'){close();return;}
+    if(a==='back'){close();pointEditor(p,preset,done);return;}
+    if(a==='yes'){const f=$('#edActs',m)._yes;close();if(f)f();if(done)done();return;}
+    if(a==='del')edConfirm(m,'Delete this study point?','Delete point',()=>{customSet('points',p.id,null);toast('Point deleted');});
+  },
+  (form,m,close)=>{
+    const text=$('#edP',m).value.trim(); if(!text){edErr(m,'Write your point.');return;}
+    const d=$('#edDiv',m).value, o=String($('#edObj',m).value||'').trim().replace(/^(PA|PPD|PDD)\s*/i,'');
+    customSet('points',p?p.id:newUid(),{div:d,obj:d==='GEN'?'':o,text:text.slice(0,4000),at:p?p.at:Date.now(),edited:Date.now()});
+    close();toast(isNew?'Point saved':'Point updated');if(done)done();
+  });
+}
+const ptLabel=p=>p.div==='GEN'?'General':(p.obj?p.div+' '+p.obj:p.div);
+function pointHtml(p,withEdit){return '<div class="mypt" data-pid="'+esc(p.id)+'"><div class="myhd"><span class="myk">My point</span>'+(p.obj?'<span class="obj">'+esc(p.div+' '+p.obj)+'</span>':'<span class="obj">'+esc(ptLabel(p))+'</span>')+(withEdit?'<button type="button" class="lnk" data-pedit="'+esc(p.id)+'">Edit</button>':'')+'</div>'+md2html(p.text)+'</div>';}
+
+/* My material: everything this person added, changed or hid */
+function initMine(opts){
+  const pts=myPoints(), cc=(S.custom&&S.custom.cards)||{}, ci=(S.custom&&S.custom.items)||{};
+  const myCards=CARDS.filter(c=>c.mine), myItems=ITEMS.filter(q=>q.mine);
+  const edited=CARDS.filter(c=>c.edited).map(c=>({kind:'cards',id:c.id,label:strip(c.q),tag:c.o})).concat(ITEMS.filter(q=>q.edited).map(q=>({kind:'items',id:q.id,label:strip(q.s),tag:q.o})));
+  const hidden=BASE_CARDS.filter(c=>cc[c.id]&&cc[c.id].hidden).map(c=>({kind:'cards',id:c.id,label:strip(c.q),tag:c.o})).concat(BASE_ITEMS.filter(q=>ci[q.id]&&ci[q.id].hidden).map(q=>({kind:'items',id:q.id,label:strip(q.s),tag:q.o})));
+  const row=(tag,label,btns)=>'<div class="mrow"><span class="obj">'+esc(tag||'—')+'</span><span class="mt">'+esc(label.slice(0,160))+'</span><span class="mb">'+btns+'</span></div>';
+  const sec=(title,count,body,add)=>'<h2 class="s">'+title+' <span class="pill">'+count+'</span></h2>'+(add||'')+(body||'<p class="small" style="color:var(--ink-3)">Nothing here yet.</p>');
+  const addBtn=(act,label)=>'<div class="row" style="margin:6px 0 12px"><button type="button" class="btn sm pri" data-mact="'+act+'">'+label+'</button></div>';
+  $('#mineBody').innerHTML=
+    sec('My study points',pts.length,pts.map(p=>pointHtml(p,true)).join(''),addBtn('newpt','+ New point'))+
+    sec('My flashcards',myCards.length,myCards.map(c=>row(c.o,strip(c.q)+' · '+c.d,'<button type="button" class="lnk" data-medit="cards:'+esc(c.id)+'">Edit</button>')).join(''),addBtn('newcard','+ New card'))+
+    sec('My practice questions',myItems.length,myItems.map(q=>row(q.o,strip(q.s),'<button type="button" class="lnk" data-medit="items:'+esc(q.id)+'">Edit</button>')).join(''),addBtn('newq','+ New question'))+
+    sec('Shared items I changed',edited.length,edited.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-medit="'+x.kind+':'+esc(x.id)+'">Edit</button><button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Restore original</button>')).join(''))+
+    sec('Shared items I hid',hidden.length,hidden.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Show again</button>')).join(''));
+  const again=()=>go('mine',{keepScroll:true});
+  $('#mineBody').onclick=e=>{
+    const t=e.target.closest('[data-mact],[data-medit],[data-mrestore],[data-pedit]'); if(!t)return;
+    if(t.dataset.mact==='newpt')pointEditor(null,null,again);
+    if(t.dataset.mact==='newcard')cardEditor(null,again);
+    if(t.dataset.mact==='newq')itemEditor(null,again);
+    if(t.dataset.pedit){const p=myPoints().find(x=>x.id===t.dataset.pedit);if(p)pointEditor(p,null,again);}
+    if(t.dataset.medit){const [k,id]=t.dataset.medit.split(':');const x=k==='cards'?CARDS.find(c=>c.id===id):ITEM(id);if(x)(k==='cards'?cardEditor:itemEditor)(x,again);}
+    if(t.dataset.mrestore){const [k,id]=t.dataset.mrestore.split(':');customSet(k,id,null);toast('Restored');again();}
+  };
+  if(opts&&opts.focus){const el=document.querySelector('[data-pid="'+opts.focus+'"]');if(el)setTimeout(()=>flashEl(el),60);}
+}
+
 /* ================= PREVIEW SITE + ADMIN PUBLISH =================
    The develop branch deploys to a develop.* address. There a banner marks the preview,
    and members of the Cognito group "admin" get a button that publishes develop to main. */
@@ -1297,6 +1533,7 @@ $('#profBtn').addEventListener('click',()=>AUTH_ON?openAccount():openProfiles())
 /* ================= FLASHCARDS ================= */
 let fq=[], fcur=null, fshown=false, fsess=0, fobj=null, fkeys=null;
 function initCards(opts){
+  const nb=$('#fcNew'); if(nb)nb.onclick=()=>cardEditor(null,()=>initCards({obj:fobj,keys:fkeys}));
   fobj=opts&&opts.obj||null;
   fkeys=opts&&opts.keys||null;
   $('#fcEyebrow').textContent='Spaced repetition · '+CARDS.length+' cards · '+DECKS.length+' decks';
@@ -1337,10 +1574,11 @@ function paintCard(){
   const s=cstate(fcur), b=s?Math.min(3,s.b):null;
   const tag=s?'<span class="st b'+b+'">'+BOXNAME[s.b]+'</span>':'<span class="st">new</span>';
   $('#fcStage').innerHTML='<div class="flash" id="flash" tabindex="0" role="button" aria-label="'+(fshown?'Answer shown':'Reveal answer')+'">'+
-    '<div class="tags"><span class="obj">'+esc(fcur.o)+'</span><span>'+esc(fcur.d)+'</span>'+tag+'</div>'+
+    '<div class="tags"><span class="obj">'+esc(fcur.o)+'</span><span>'+esc(fcur.d)+'</span>'+(fcur.mine?'<span class="chip c-out">Yours</span>':fcur.edited?'<span class="chip c-rot">Edited</span>':'')+tag+'<button type="button" class="lnk fcedit" id="fcEdit">Edit</button></div>'+
     '<div class="q">'+fcur.q+'</div>'+(fshown?'<div class="a">'+fcur.a+'</div>':'<div class="hint">Tap or press Space to reveal</div>')+'</div>'+
     (fshown?'<div class="rate3"><button type="button" class="r1" data-r="1">Again<small>1 · minutes</small></button><button type="button" class="r2" data-r="2">Shaky<small>2 · tomorrow</small></button><button type="button" class="r3" data-r="3">Good<small>3 · '+goodLabel(s)+'</small></button></div>':'<button type="button" class="revealbtn" id="reveal">Reveal answer</button>');
   $('#flash').onclick=()=>{if(!fshown&&!swiped)reveal();};
+  $('#fcEdit').onclick=e=>{e.stopPropagation();const was=fcur,sh=fshown;cardEditor(was,()=>{const nw=CARDS.find(x=>x.id===was.id);if(nw&&fcur===was){fcur=nw;fshown=sh;paintCard();}else if(!nw&&fcur===was)nextCard();});};
   if(fshown)$('#fcStage').insertAdjacentHTML('beforeend','<div class="fcstat swipehint">Swipe the card left for Again, right for Good</div>');
   attachSwipe($('#flash'));
   const rv=$('#reveal'); if(rv)rv.onclick=reveal;
@@ -1418,7 +1656,8 @@ function practiceList(opts){
     '<div class="row"><span class="lbl" style="min-width:64px">Division</span><div class="seg" id="qzDiv">'+['','PA','PPD','PDD'].map(d=>'<button type="button" data-d="'+d+'">'+(d||'All')+'</button>').join('')+'</div></div>'+
     '<div class="row"><span class="lbl" style="min-width:64px">Show</span><div class="seg" id="qzMode">'+[['all','All'],['new','Unanswered'],['due','Mistakes due ('+mistDue().length+')'],['missed','Missed']].map(m=>'<button type="button" data-m="'+m[0]+'">'+m[1]+'</button>').join('')+'</div></div>')+
     '<div class="row"><span class="lbl" style="min-width:64px">Timed</span><select class="sel" id="qzN" aria-label="Number of items"><option value="10">10 items · 24 min</option><option value="20">20 items · 48 min</option><option value="0">Every item in this division</option></select><button type="button" class="btn pri" id="qzStart">Start timed set</button></div>'+
-    '<div class="progress" id="qzprog" style="margin:0"></div></div><div id="quiz"></div>';
+    '<div class="row" style="justify-content:space-between"><div class="progress" id="qzprog" style="margin:0"></div><button type="button" class="btn sm" id="qzNew">+ New question</button></div></div><div id="quiz"></div>';
+  $('#qzNew').onclick=()=>itemEditor(null,()=>practiceList(opts));
   if(!obj){
     $$('#qzDiv button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.d===S.qdiv)));
     $$('#qzMode button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===S.qmode)));
@@ -1451,7 +1690,7 @@ function listProg(list){
 function itemEl(it,idx,mode){
   const el=document.createElement('div');el.className='qz';el.id='it-'+idx;
   const typ=it.t==='cata'?'Check all that apply':'Multiple choice';
-  el.innerHTML='<div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>'+typ+'</span></div>'+
+  el.innerHTML='<div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>'+typ+'</span>'+(it.mine?'<span class="chip c-out">Yours</span>':it.edited?'<span class="chip c-rot">Edited</span>':'')+(mode.onSel?'':'<button type="button" class="lnk" data-act="edit" style="margin-left:auto;font-size:11px">Edit</button>')+'</div>'+
     '<div class="stem">'+it.s+'</div>'+it.opts.map((o,i)=>'<button type="button" class="opt" data-i="'+i+'">'+esc(o)+'</button>').join('')+
     '<div class="foot"></div><div class="exp" hidden></div>';
   const foot=$('.foot',el);
@@ -1473,6 +1712,7 @@ function itemEl(it,idx,mode){
     const a=e.target.closest('[data-act]');
     if(a){
       if(a.dataset.act==='reread')gotoObj(it.o);
+      if(a.dataset.act==='edit'){itemEditor(it,()=>{const nw=ITEM(it.id);if(nw)el.replaceWith(itemEl(nw,nw.id,mode));else el.remove();});return;}
       if(a.dataset.act==='retry'){el.replaceWith(itemEl(it,idx,Object.assign({},mode,{fresh:true})));}
       if(a.dataset.act==='submit'&&sel.length){const r=record(idx,sel);showResult(sel,r);refreshProg();}
       return;
@@ -1643,6 +1883,7 @@ function buildIndex(){
   IDX=[];
   CARDS.forEach((c,i)=>IDX.push({k:'Card · '+c.d,t:strip(c.q),x:strip(c.a),type:'card',ref:i}));
   ITEMS.forEach(it=>IDX.push({k:'Question · '+it.o,t:strip(it.s),x:it.opts.join(' · '),type:'item',ref:it.id}));
+  myPoints().forEach(p=>{const t=strip(md2html(p.text));IDX.push({k:'My point · '+ptLabel(p),t:t.slice(0,140),x:t,type:'point',ref:p.id});});
   NOTE_PAGES.forEach(pid=>{
     const tpl=$('#tpl-'+pid); if(!tpl)return;
     const frag=tpl.content, pname=PAGES.find(p=>p.id===pid).n;
@@ -1688,6 +1929,7 @@ function openResult(r){
     modal('<div class="lbl">'+esc(c.o)+' · '+esc(c.d)+(s?' · '+BOXNAME[s.b]:' · new')+'</div><div class="q">'+c.q+'</div><div class="a">'+c.a+'</div><div class="row"><button type="button" class="btn pri" data-a="deck">Study this deck</button>'+(odiv(c.o)?'<button type="button" class="btn" data-a="notes">Read the notes</button>':'')+'<button type="button" class="btn" data-a="x">Close</button></div>',
       a=>{if(a==='deck'){S.deck=c.d;S.fcMode='all';save();go('cards');}if(a==='notes')gotoObj(c.o);});return;}
   if(r.type==='item'){S.qdiv='';S.qmode='all';go('practice',{focus:r.ref});return;}
+  if(r.type==='point'){go('mine',{focus:r.ref});return;}
   go(r.page);
   const el=r.type==='head'?$$('h1,h2,h3,h4',view)[r.ref]:$$('tr',view)[r.ref];
   setTimeout(()=>flashEl(el),60);

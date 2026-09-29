@@ -241,6 +241,30 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .pvlist code{font-family:var(--mono);font-size:11px;color:var(--accent-ink);margin-right:6px}
 .pvlist span{color:var(--ink-3);font-size:11.5px;margin-left:6px}
 
+/* ---------- personal material ---------- */
+.edf{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.edrow{display:flex;gap:10px;flex-wrap:wrap}
+.edf textarea,.edf select.sel{width:100%;font-family:var(--sans);font-size:14px;padding:9px 11px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);color:var(--ink);resize:vertical}
+.edf textarea:focus,.edf select:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);background:var(--surface)}
+.edf .ahint code{font-family:var(--mono);font-size:11px;background:var(--rule-2);padding:0 4px;border-radius:3px}
+.edf #edActs{margin-top:10px}
+#modal:has(.edf){width:min(720px,calc(100vw - 32px))}
+.mypt{margin:10px 0 14px;padding:10px 14px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--rule));border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;max-width:74ch;font-size:15px}
+.mypt p:last-child,.mypt ul:last-child,.mypt ol:last-child{margin-bottom:0}
+.myhd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.myk{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink)}
+.myhd .lnk{margin-left:auto;font-size:12px}
+.mybox{margin:4px 0 22px;padding:12px 14px;border:1px dashed var(--rule);border-radius:9px;max-width:80ch;font-family:var(--sans);font-size:14px}
+.mybox .mypt{font-family:var(--serif)}
+.addpt{margin-left:8px;vertical-align:2px;font-family:var(--sans);font-size:11px;font-weight:600;padding:1px 7px;border:1px dashed var(--rule);border-radius:99px;background:none;color:var(--ink-3);cursor:pointer;opacity:0;transition:opacity .15s}
+h3:hover .addpt,.addpt:focus-visible{opacity:1}
+@media (hover:none){.addpt{opacity:1}}
+.mrow{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--rule-2);font-family:var(--sans);font-size:13.5px;max-width:980px}
+.mrow .obj{flex:0 0 auto;min-width:64px;text-align:center}
+.mrow .mt{flex:1 1 auto;min-width:0}
+.mrow .mb{flex:0 0 auto;display:flex;gap:12px}
+.fcedit{margin-left:8px;font-size:11px;letter-spacing:0;text-transform:none}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1840px;justify-self:center}
 @media (min-width:1200px){
