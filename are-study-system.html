@@ -342,6 +342,24 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .leech .c{font-family:var(--mono);font-size:12px;color:var(--flag);min-width:34px}
 .leech .t{flex:1 1 auto;min-width:0}
 
+/* ---------- profiles ---------- */
+.av{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:99px;background:var(--accent);color:var(--paper);font-family:var(--sans);font-size:11.5px;font-weight:700;letter-spacing:.02em;flex:0 0 auto}
+.profbtn{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border:1px solid var(--rule);border-radius:99px;background:var(--surface);cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--ink);max-width:180px}
+.profbtn:hover{border-color:var(--accent)}
+.profbtn .pn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plist{display:flex;flex-direction:column;gap:6px;margin:6px 0 12px}
+.prow{display:flex;align-items:center;gap:12px;padding:6px 10px 6px 6px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-2)}
+.prow.on{border-color:var(--accent);background:var(--accent-soft)}
+.prow .pick{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:10px;background:none;border:0;padding:4px;cursor:pointer;text-align:left;font-family:var(--sans)}
+.prow .pick b{display:block;font-size:14px}
+.prow .pick small{display:block;font-size:11.5px;color:var(--ink-2)}
+.prow .av{width:34px;height:34px;font-size:13px}
+.padd{display:flex;gap:8px;margin-bottom:6px}
+.padd input{flex:1 1 auto;min-width:0;font-family:var(--sans);font-size:14px;padding:9px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);color:var(--ink)}
+.pio{margin-top:8px}
+.pio textarea{width:100%;font-family:var(--mono);font-size:11px;padding:8px;border:1px solid var(--rule);border-radius:7px;background:var(--surface);color:var(--ink);margin:8px 0}
+@media (max-width:600px){.profbtn{padding:3px}.profbtn .pn{display:none}.padd input,.pio textarea{font-size:16px}}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1440px;justify-self:center}
 @media (min-width:1500px){
@@ -429,6 +447,7 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
       <div id="results" hidden></div>
     </div>
     <div class="sync" id="sync"><b></b><span>This device</span></div>
+    <button type="button" class="profbtn" id="profBtn" aria-haspopup="dialog"><span class="av">?</span></button>
   </div>
   <div id="view"><p class="lede">Loading your study material…</p></div>
 </div>
@@ -598,7 +617,18 @@ const itemOk=(it,sel)=>sel.length===it.c.length&&sel.every(i=>it.c.includes(i));
 
 /* ---------- state + sync ---------- */
 const LS='are_study_system_v1';
-let S={v:2,at:0,cards:{},ans:{},plan:{},passed:{},log:{},mist:{},cardMiss:{},deck:'',fcMode:'due',qdiv:'',qmode:'all'};
+const blankState=()=>({v:2,at:0,cards:{},ans:{},plan:{},passed:{},log:{},mist:{},cardMiss:{},deck:'',fcMode:'due',qdiv:'',qmode:'all'});
+let S=blankState();
+
+/* ---------- profiles: separate progress per person on this browser ---------- */
+const LSP='are_profiles_v1';
+let PROF={list:[{id:'p0',name:'Me'}],cur:'p0'};
+function profLoad(){try{const r=localStorage.getItem(LSP);if(r){const p=JSON.parse(r);if(p&&Array.isArray(p.list)&&p.list.length)PROF=p;}}catch(e){}if(!PROF.list.some(x=>x.id===PROF.cur))PROF.cur=PROF.list[0].id;}
+function profSave(){try{localStorage.setItem(LSP,JSON.stringify(PROF));}catch(e){}}
+const curProf=()=>PROF.list.find(x=>x.id===PROF.cur)||PROF.list[0];
+const lsKey=id=>id==='p0'?LS:LS+':'+id;           // the first profile keeps the original key, so earlier progress stays
+const dbPath=id=>'data/users/'+uid+'/'+(id==='p0'?'progress':'progress-'+id);
+const initials=n=>(String(n||'?').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2)||'?').toUpperCase();
 const MGAP=[1*DAY,3*DAY,7*DAY]; // mistake re-ask gaps: after a miss, then after each on-time correct answer
 /* backfill: any wrong answer without a log entry becomes a mistake due now */
 function normalize(){
@@ -610,15 +640,15 @@ function normalize(){
   Object.keys(S.ans).forEach(i=>{const a=S.ans[i];if(a&&!a.ok&&a.sel&&a.sel.length&&!S.mist[i])S.mist[i]={n:1,sel:a.sel,at:a.at||Date.now(),due:Date.now(),stage:0,fixed:false,note:''};});
 }
 let db=null, uid=null, saveT=null, synced=false, curPage=null;
-function lsLoad(){try{const r=localStorage.getItem(LS);return r?JSON.parse(r):null;}catch(e){return null;}}
-function lsSave(){try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){}}
+function lsLoad(id){try{const r=localStorage.getItem(lsKey(id||PROF.cur));return r?JSON.parse(r):null;}catch(e){return null;}}
+function lsSave(){try{localStorage.setItem(lsKey(PROF.cur),JSON.stringify(S));}catch(e){}}
 function setSync(t){const el=$('#sync');el.classList.toggle('on',synced);$('span',el).textContent=t||(synced?'Synced':'This device');}
 function save(){
   S.at=Date.now(); lsSave();
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{
     if(!db||!uid){setSync();return;}
-    try{await db.doc('data/users/'+uid+'/progress').set({v:2,data:S});synced=true;setSync('Saved');setTimeout(()=>setSync(),1800);}
+    try{await db.doc(dbPath(PROF.cur)).set({v:2,data:S});synced=true;setSync('Saved');setTimeout(()=>setSync(),1800);}
     catch(e){synced=false;setSync('This device only');}
   },900);
 }
@@ -626,10 +656,21 @@ function logAct(){
   const k=ds(new Date()); S.log[k]=(S.log[k]||0)+1;
   const cut=ds(new Date(Date.now()-90*DAY)); Object.keys(S.log).forEach(d=>{if(d<cut)delete S.log[d];});
 }
+function loadLocal(){S=blankState();const l=lsLoad();if(l&&l.v===2)S=Object.assign(S,l);normalize();}
+/* pull the signed-in account's copy of the current profile, keep whichever is newer */
+async function pullRemote(){
+  if(!db||!uid)return;
+  try{
+    const snap=await db.doc(dbPath(PROF.cur)).get();
+    const rem=snap&&snap.exists?snap.data():null;
+    if(rem&&rem.data&&(rem.data.at||0)>(S.at||0)){S=Object.assign(blankState(),rem.data);normalize();lsSave();route(true);}
+    else if(S.at){save();}
+    synced=true; setSync();
+  }catch(e){synced=false;setSync('This device only');}
+}
 async function boot(){
-  const l=lsLoad(); if(l&&l.v===2)S=Object.assign(S,l);
-  normalize();
-  buildNav();
+  profLoad(); loadLocal();
+  buildNav(); paintProf();
   await loadNotes();
   route();
   try{
@@ -638,12 +679,62 @@ async function boot(){
     if(!d||!u)return;
     const id=await u.id(); if(!id)return;
     db=d; uid=id;
-    const snap=await db.doc('data/users/'+uid+'/progress').get();
-    const rem=snap&&snap.exists?snap.data():null;
-    if(rem&&rem.data&&(rem.data.at||0)>(S.at||0)){S=Object.assign(S,rem.data);normalize();lsSave();route(true);}
-    else if(S.at){save();}
-    synced=true; setSync();
+    await pullRemote();
   }catch(e){synced=false;setSync('This device only');}
+}
+function switchProf(id){
+  clearTimeout(saveT); lsSave();
+  PROF.cur=id; profSave(); loadLocal(); paintProf();
+  go(curPage||'today'); toast('Switched to '+curProf().name);
+  pullRemote();
+}
+function toast(t){setSync(t);clearTimeout(toast._t);toast._t=setTimeout(()=>setSync(),2400);}
+function paintProf(){
+  const b=$('#profBtn'),p=curProf();
+  b.innerHTML='<span class="av">'+esc(initials(p.name))+'</span><span class="pn">'+esc(p.name)+'</span>';
+  b.title='Studying as '+p.name+' — switch or add a person';
+}
+/* who is studying: switch, add, rename, remove, export/import */
+function openProfiles(msg){
+  const rows=PROF.list.map(p=>{const st=p.id===PROF.cur?S:(lsLoad(p.id)||{});const n=Object.keys(st.cards||{}).length,a=Object.keys(st.ans||{}).length;
+    return '<div class="prow'+(p.id===PROF.cur?' on':'')+'"><button type="button" class="pick" data-a="use:'+p.id+'"><span class="av">'+esc(initials(p.name))+'</span><span><b>'+esc(p.name)+'</b><small>'+n+' cards rated · '+a+' questions answered'+(p.id===PROF.cur?' · studying now':'')+'</small></span></button>'+
+      '<button type="button" class="lnk" data-a="ren:'+p.id+'">Rename</button>'+(PROF.list.length>1?'<button type="button" class="lnk" data-a="del:'+p.id+'" style="color:var(--flag)">Remove</button>':'')+'</div>';}).join('');
+  modalForm('<div class="lbl">Who is studying?</div><div class="q">Profiles</div><p class="small" style="margin-top:-6px">Each person gets separate flashcard ratings, answers, mistakes and plan checkboxes. Profiles are kept in this browser'+(db&&uid?' and in your claude.ai account':'')+'.</p>'+
+    (msg?'<div class="learned good" style="margin:0 0 10px">'+msg+'</div>':'')+
+    '<div class="plist">'+rows+'</div>'+
+    '<form class="padd" id="pAdd"><input id="pName" maxlength="40" placeholder="Add a person — type a name" aria-label="New person\'s name" autocomplete="off"><button type="submit" class="btn pri">Add</button></form>'+
+    '<details class="pio"><summary>Move progress to another device or person</summary>'+
+      '<p class="small">Copy the code on one device, then paste it here on the other. Importing replaces the progress of the profile you are studying as.</p>'+
+      '<div class="row"><button type="button" class="btn sm" data-a="exp">Copy my progress code</button></div>'+
+      '<textarea id="pCode" rows="3" placeholder="Paste a progress code here" aria-label="Progress code"></textarea>'+
+      '<div class="row"><button type="button" class="btn sm" data-a="imp">Import into '+esc(curProf().name)+'</button></div></details>'+
+    '<div class="row" style="margin-top:14px"><button type="button" class="btn" data-a="close">Done</button></div>',
+  (a,m,close)=>{
+    const [act,id]=a.split(':');
+    if(act==='use'){close();if(id!==PROF.cur)switchProf(id);return;}
+    if(act==='close'){close();return;}
+    if(act==='ren'){const p=PROF.list.find(x=>x.id===id);const row=m.querySelector('[data-a="ren:'+id+'"]').closest('.prow');
+      row.innerHTML='<form class="padd" style="flex:1;margin:0" data-ren="'+id+'"><input maxlength="40" value="'+esc(p.name)+'" aria-label="New name"><button type="submit" class="btn sm pri">Save</button></form>';$('input',row).focus();$('input',row).select();return;}
+    if(act==='del'){const p=PROF.list.find(x=>x.id===id);const row=m.querySelector('[data-a="del:'+id+'"]').closest('.prow');
+      row.insertAdjacentHTML('afterend','<div class="confirm">Remove <b>'+esc(p.name)+'</b> and all their progress on this browser? This cannot be undone.<div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-a="delyes:'+id+'" style="background:var(--flag);border-color:var(--flag);color:#fff">Remove</button><button type="button" class="btn sm" data-a="delno">Keep</button></div></div>');return;}
+    if(act==='delno'){close();openProfiles();return;}
+    if(act==='delyes'){const p=PROF.list.find(x=>x.id===id);PROF.list=PROF.list.filter(x=>x.id!==id);try{localStorage.removeItem(lsKey(id));}catch(e){}
+      if(db&&uid){db.doc(dbPath(id)).delete().catch(()=>{});}
+      profSave(); close(); if(PROF.cur===id)switchProf(PROF.list[0].id); openProfiles('Removed '+esc(p.name)+'.');return;}
+    if(act==='exp'){const code='ARE1.'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));const ta=$('#pCode',m);ta.value=code;
+      const done=()=>toast('Progress code copied');
+      try{navigator.clipboard.writeText(code).then(done,()=>{ta.select();toast('Select the code and copy it');});}catch(e){ta.select();toast('Select the code and copy it');}return;}
+    if(act==='imp'){const raw=$('#pCode',m).value.trim();
+      try{if(!raw.startsWith('ARE1.'))throw 0;const data=JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));if(!data||data.v!==2)throw 0;
+        S=Object.assign(blankState(),data);normalize();save();close();go(curPage||'today');toast('Progress imported into '+curProf().name);}
+      catch(e){$('#pCode',m).insertAdjacentHTML('afterend','<p class="small" style="color:var(--flag);margin:6px 0 0">That code could not be read. Copy the whole code, starting with ARE1.</p>');}
+      return;}
+  },
+  (form,m,close)=>{
+    if(form.id==='pAdd'){const name=$('#pName',m).value.trim();if(!name){$('#pName',m).focus();return;}
+      const id='p'+Date.now().toString(36);PROF.list.push({id,name:name.slice(0,40)});profSave();close();switchProf(id);return;}
+    if(form.dataset.ren){const p=PROF.list.find(x=>x.id===form.dataset.ren);const v=$('input',form).value.trim();if(v)p.name=v.slice(0,40);profSave();paintProf();close();openProfiles();}
+  });
 }
 
 /* ---------- nav / routing ---------- */
@@ -696,7 +787,7 @@ function cardCounts(list){
 /* ================= TODAY ================= */
 function initToday(){
   const now=new Date(), t=midnight(now), w=curWeek();
-  $('#tdEyebrow').textContent=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  $('#tdEyebrow').textContent=now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+(PROF.list.length>1||curProf().name!=='Me'?' · '+curProf().name+'’s desk':'');
   const next=EXAMS.find(e=>!S.passed[e.d]&&midnight(e.date)>=t);
   if(MATERR.length)$('#tdExams').insertAdjacentHTML('beforebegin','<div class="rl"><div class="hd">Check the material files</div><ul>'+MATERR.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>');
   if(PW(w)){$('#tdTitle').textContent='Week '+w+' of '+PLAN.length+(next?' · '+Math.round((midnight(next.date)-t)/DAY)+' days to '+next.d:'');$('#tdLede').textContent=PW(w).g;}
@@ -830,6 +921,18 @@ function modal(html,onAct){
   m.onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;close();if(onAct)onAct(b.dataset.a);};
   const f=$('button',m);if(f)f.focus();
 }
+
+/* a dialog that stays open: onAct(action, modalEl, close) for [data-a] clicks, onSubmit(form, modalEl, close) for forms */
+function modalForm(html,onAct,onSubmit){
+  const m=$('#modal'),s=$('#scrim');m.innerHTML=html;m.hidden=false;s.hidden=false;
+  const close=()=>{m.hidden=true;s.hidden=true;m.onclick=null;m.onsubmit=null;document.removeEventListener('keydown',kd);};
+  const kd=e=>{if(e.key==='Escape')close();};
+  document.addEventListener('keydown',kd);
+  s.onclick=close;
+  m.onclick=e=>{const b=e.target.closest('[data-a]');if(b&&onAct)onAct(b.dataset.a,m,close);};
+  m.onsubmit=e=>{e.preventDefault();if(onSubmit)onSubmit(e.target,m,close);};
+}
+$('#profBtn').addEventListener('click',()=>openProfiles());
 
 /* ================= FLASHCARDS ================= */
 let fq=[], fcur=null, fshown=false, fsess=0, fobj=null, fkeys=null;
