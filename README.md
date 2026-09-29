@@ -6,4 +6,4 @@ Study site for ARE 5.0 PA, PPD and PDD: dashboard, study notes, spaced-repetitio
 - `are-study-system.html` is the page source, also published to claude.ai
 - `material/` holds all study content. See `material/README.md` for how to edit it.
 
-Progress is saved in each browser. On the claude.ai version it also syncs to your account.
+Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md` and `config.js`) each person signs in and progress syncs across devices. On the claude.ai version it syncs to your claude.ai account.

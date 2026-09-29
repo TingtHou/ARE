@@ -364,6 +364,24 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .pio textarea{width:100%;font-family:var(--mono);font-size:11px;padding:8px;border:1px solid var(--rule);border-radius:7px;background:var(--surface);color:var(--ink);margin:8px 0}
 @media (max-width:600px){.profbtn{padding:3px}.profbtn .pn{display:none}.padd input,.pio textarea{font-size:16px}}
 
+/* ---------- sign-in ---------- */
+#authView{min-height:100vh;display:grid;place-items:center;padding:32px 16px;background:var(--paper)}
+.authbox{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--shadow);padding:26px 26px 22px}
+.abrand{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--rule)}
+.abrand b{font-family:var(--sans);font-size:15px;font-weight:700}
+.abrand span{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--ink-3)}
+#authBody h1{font-family:var(--sans);font-size:22px;margin:0 0 4px}
+.asub{font-size:14.5px;color:var(--ink-2);margin:0 0 16px}
+.af{display:block;margin-bottom:12px}
+.af span{display:block;font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.af input{width:100%;font-family:var(--sans);font-size:16px;padding:10px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);color:var(--ink)}
+.af input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);background:var(--surface)}
+.ahint{font-family:var(--sans);font-size:12px;color:var(--ink-3);margin:-4px 0 12px}
+.abtn{width:100%;min-height:46px;margin-top:4px;font-size:15px}
+.aerr{margin:0 0 12px;padding:9px 12px;border-radius:7px;background:var(--flag-soft);border:1px solid var(--flag);color:var(--flag);font-family:var(--sans);font-size:13px}
+.alinks{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px}
+#authBody .learned{margin:0 0 12px}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1440px;justify-self:center}
 @media (min-width:1500px){
@@ -456,6 +474,12 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
   <div id="view"><p class="lede">Loading your study material…</p></div>
 </div>
 </div>
+<div id="authView" hidden>
+  <div class="authbox">
+    <div class="abrand"><b>ARE Study System</b><span>PA · PPD · PDD</span></div>
+    <div id="authBody"></div>
+  </div>
+</div>
 <div id="scrim" hidden></div>
 <div id="modal" role="dialog" aria-modal="true" hidden></div>
 
@@ -539,7 +563,8 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 <div id="plan"></div>
 </template>
 
-<!-- Study material lives in material/ — edit those files, not this page. -->
+<!-- Study material lives in material/ — edit those files, not this page. Accounts are configured in config.js. -->
+<script src="config.js"></script>
 <script src="material/plan.js"></script>
 <script src="material/cards.js"></script>
 <script src="material/questions.js"></script>
@@ -651,6 +676,12 @@ function save(){
   S.at=Date.now(); lsSave();
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{
+    if(AUTH_ON){
+      if(!SESSION)return;
+      try{await api('PUT',JSON.stringify(S));synced=true;setSync('Saved');setTimeout(()=>setSync(),1800);}
+      catch(e){synced=false;setSync('Offline · saved here');}
+      return;
+    }
     if(!db||!uid){setSync();return;}
     try{await db.doc(dbPath(PROF.cur)).set({v:2,data:S});synced=true;setSync('Saved');setTimeout(()=>setSync(),1800);}
     catch(e){synced=false;setSync('This device only');}
@@ -663,6 +694,17 @@ function logAct(){
 function loadLocal(){S=blankState();const l=lsLoad();if(l&&l.v===2)S=Object.assign(S,l);normalize();}
 /* pull the signed-in account's copy of the current profile, keep whichever is newer */
 async function pullRemote(){
+  if(AUTH_ON){
+    if(!SESSION||SESSION.offline){synced=false;setSync('Offline · saved here');return;}
+    try{
+      const rem=await api('GET');
+      if(rem&&rem.v===2&&(rem.at||0)>(S.at||0)){S=Object.assign(blankState(),rem);normalize();lsSave();route(true);}
+      else if(S.at){save();}
+      synced=true; setSync();
+      if(!rem&&!S.at&&legacyProfiles().length)openAccount('Welcome. This browser has study progress from before accounts — you can bring it into your account below.');
+    }catch(e){synced=false;setSync('Offline · saved here');}
+    return;
+  }
   if(!db||!uid)return;
   try{
     const snap=await db.doc(dbPath(PROF.cur)).get();
@@ -673,6 +715,13 @@ async function pullRemote(){
   }catch(e){synced=false;setSync('This device only');}
 }
 async function boot(){
+  if(AUTH_ON){
+    $('#shell').hidden=true;
+    buildNav(); await loadNotes();
+    const ok=await resumeSession();
+    if(ok)enterApp(); else showAuth('signin');
+    return;
+  }
   profLoad(); loadLocal();
   buildNav(); paintProf();
   await loadNotes();
@@ -926,6 +975,140 @@ function modal(html,onAct){
   const f=$('button',m);if(f)f.focus();
 }
 
+/* ================= ACCOUNTS (Amazon Cognito + progress API) =================
+   On when config.js holds all four values and the page is not inside claude.ai
+   (claude.ai has its own sign-in and sync). */
+const AC=window.ARE_AUTH||{};
+const AUTH_ON=!!(AC.region&&AC.userPoolId&&AC.clientId&&AC.apiUrl)&&!(window.claude&&window.claude.use);
+const LSA='are_auth_v1';
+let SESSION=null;
+function jwtClaims(t){try{const b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(decodeURIComponent(escape(atob(b))));}catch(e){return {};}}
+const COGMSG={NotAuthorizedException:'Email or password is wrong.',UserNotFoundException:'Email or password is wrong.',UserNotConfirmedException:'Confirm your email first. Enter the code we sent you.',UsernameExistsException:'An account with this email already exists. Sign in instead.',CodeMismatchException:'That code is not right. Check the most recent email.',ExpiredCodeException:'That code has expired. Send a new one.',InvalidPasswordException:'Use at least 8 characters, including a lowercase letter and a number.',LimitExceededException:'Too many attempts. Wait a few minutes, then try again.',TooManyRequestsException:'Too many attempts. Wait a few minutes, then try again.',CodeDeliveryFailureException:'The email could not be sent. Check the address and try again.'};
+async function cog(action,body){
+  let r;
+  try{r=await fetch('https://cognito-idp.'+AC.region+'.amazonaws.com/',{method:'POST',headers:{'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.'+action},body:JSON.stringify(body)});}
+  catch(e){const x=new Error('No connection. Check your internet and try again.');x.code='Network';throw x;}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){const t=(j.__type||'').split('#').pop();const x=new Error(COGMSG[t]||(t==='InvalidParameterException'&&j.message)||'Something went wrong. Try again.');x.code=t;throw x;}
+  return j;
+}
+function setSession(res,email){
+  const c=jwtClaims(res.IdToken);
+  SESSION={id:res.IdToken,refresh:res.RefreshToken||(SESSION&&SESSION.refresh),exp:Date.now()+(res.ExpiresIn||3600)*1000-120000,sub:c.sub,email:c.email||email||'',name:c.name||''};
+  try{localStorage.setItem(LSA,JSON.stringify({refresh:SESSION.refresh,email:SESSION.email,sub:SESSION.sub,name:SESSION.name}));}catch(e){}
+}
+function storedAuth(){try{return JSON.parse(localStorage.getItem(LSA)||'null');}catch(e){return null;}}
+/* returns true, false (must sign in again) or 'offline' */
+async function refreshSession(){
+  const st=storedAuth(), rt=(SESSION&&SESSION.refresh)||(st&&st.refresh);
+  if(!rt)return false;
+  try{const j=await cog('InitiateAuth',{AuthFlow:'REFRESH_TOKEN_AUTH',ClientId:AC.clientId,AuthParameters:{REFRESH_TOKEN:rt}});
+    j.AuthenticationResult.RefreshToken=rt; setSession(j.AuthenticationResult,st&&st.email); return true;}
+  catch(e){return e.code==='Network'?'offline':false;}
+}
+async function resumeSession(){
+  const st=storedAuth(); if(!st||!st.refresh)return false;
+  const r=await refreshSession();
+  if(r===true)return true;
+  if(r==='offline'&&st.sub){SESSION={refresh:st.refresh,sub:st.sub,email:st.email,name:st.name,exp:0,offline:true};return true;}
+  try{localStorage.removeItem(LSA);}catch(e){}
+  return false;
+}
+async function idToken(){
+  if(!SESSION)return null;
+  if(SESSION.offline||Date.now()>SESSION.exp){const r=await refreshSession();if(r!==true)return null;}
+  return SESSION.id;
+}
+async function api(method,body){
+  const t=await idToken(); if(!t)throw new Error('offline');
+  const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+'/progress',{method,headers:Object.assign({Authorization:'Bearer '+t},body?{'Content-Type':'application/json'}:{}),body});
+  if(!r.ok)throw new Error('api '+r.status);
+  return r.status===204?null:r.json();
+}
+function enterApp(){
+  PROF={list:[{id:'u_'+SESSION.sub,name:SESSION.name||SESSION.email.split('@')[0]}],cur:'u_'+SESSION.sub};
+  loadLocal(); paintProf();
+  $('#authView').hidden=true; $('#shell').hidden=false;
+  route(); pullRemote();
+}
+async function signOut(){
+  clearTimeout(saveT);
+  if(SESSION&&!SESSION.offline&&S.at){try{await api('PUT',JSON.stringify(S));}catch(e){}}
+  try{localStorage.removeItem(lsKey(PROF.cur));localStorage.removeItem(LSA);}catch(e){}
+  SESSION=null; S=blankState(); synced=false; setSync();
+  $('#modal').hidden=true; $('#scrim').hidden=true;
+  showAuth('signin',{msg:'Signed out. Your progress is saved in your account.'});
+}
+/* profiles saved on this browser before accounts were switched on */
+function legacyProfiles(){
+  let p=null;try{p=JSON.parse(localStorage.getItem(LSP)||'null');}catch(e){}
+  const list=(p&&p.list)||[{id:'p0',name:'Me'}];
+  return list.map(x=>({id:x.id,name:x.name,st:lsLoad(x.id)})).filter(x=>x.st&&x.st.at&&(Object.keys(x.st.cards||{}).length||Object.keys(x.st.ans||{}).length||Object.keys(x.st.plan||{}).length));
+}
+function openAccount(msg){
+  const leg=legacyProfiles();
+  const n=Object.keys(S.cards).length,a=Object.keys(S.ans).length;
+  modalForm('<div class="lbl">Your account</div><div class="q">'+esc(curProf().name)+'</div><p class="small" style="margin-top:-6px">'+esc(SESSION.email)+' · '+n+' card'+(n===1?'':'s')+' rated · '+a+' question'+(a===1?'':'s')+' answered<br>'+(SESSION.offline?'Offline right now; changes are kept here and sync when you reconnect.':'Progress syncs to your account on every device you sign in on.')+'</p>'+
+    (msg?'<div class="learned good" style="margin:0 0 10px">'+esc(msg)+'</div>':'')+
+    (leg.length?'<details class="pio"'+(msg?' open':'')+'><summary>Bring in progress saved on this browser before accounts</summary><p class="small">This replaces the progress in your account with the profile you pick.</p><div class="plist">'+leg.map(x=>'<div class="prow"><span class="pick" style="cursor:default"><span class="av">'+esc(initials(x.name))+'</span><span><b>'+esc(x.name)+'</b><small>'+Object.keys(x.st.cards||{}).length+' cards rated · '+Object.keys(x.st.ans||{}).length+' questions answered</small></span></span><button type="button" class="btn sm" data-a="leg:'+x.id+'">Use this</button></div>').join('')+'</div></details>':'')+
+    '<details class="pio"><summary>Copy progress as a code</summary><p class="small">A backup you can paste back in later. Importing replaces your current progress.</p><div class="row"><button type="button" class="btn sm" data-a="exp">Copy my progress code</button></div><textarea id="pCode" rows="3" placeholder="Paste a progress code here" aria-label="Progress code"></textarea><div class="row"><button type="button" class="btn sm" data-a="imp">Import</button></div></details>'+
+    '<div class="row" style="margin-top:14px"><button type="button" class="btn" data-a="close">Done</button><button type="button" class="btn" data-a="out">Sign out</button></div>',
+  (act,m,close)=>{
+    const [a2,id]=act.split(':');
+    if(a2==='close')close();
+    if(a2==='out')signOut();
+    if(a2==='leg'){const x=leg.find(y=>y.id===id);if(!x)return;S=Object.assign(blankState(),x.st);normalize();save();close();go(curPage||'today');toast('Progress from '+x.name+' added to your account');}
+    if(a2==='exp'){const code='ARE1.'+btoa(unescape(encodeURIComponent(JSON.stringify(S))));const ta=$('#pCode',m);ta.value=code;try{navigator.clipboard.writeText(code).then(()=>toast('Progress code copied'),()=>ta.select());}catch(e){ta.select();}}
+    if(a2==='imp'){const raw=$('#pCode',m).value.trim();try{if(!raw.startsWith('ARE1.'))throw 0;const d=JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));if(!d||d.v!==2)throw 0;S=Object.assign(blankState(),d);normalize();save();close();go(curPage||'today');toast('Progress imported');}
+      catch(e){$('#pCode',m).insertAdjacentHTML('afterend','<p class="small" style="color:var(--flag);margin:6px 0 0">That code could not be read. Copy the whole code, starting with ARE1.</p>');}}
+  });
+}
+/* sign-in screens: signin · signup · confirm · forgot · reset */
+let authMem={};
+function showAuth(mode,o){
+  o=o||{}; $('#shell').hidden=true; $('#authView').hidden=false;
+  const f=(id,label,type,extra)=>'<label class="af" for="'+id+'"><span>'+label+'</span><input id="'+id+'" type="'+type+'" '+(extra||'')+'></label>';
+  const E=esc(authMem.email||'');
+  const V={
+    signin:['Sign in','Pick up where you left off, on any device.',f('aEmail','Email','email','autocomplete="username" required value="'+E+'"')+f('aPass','Password','password','autocomplete="current-password" required'),'Sign in','<button type="button" class="lnk" data-m="signup">Create an account</button><button type="button" class="lnk" data-m="forgot">Forgot password?</button>'],
+    signup:['Create your account','Your flashcards, answers, mistakes and plan follow you to every device.',f('aName','Your name','text','autocomplete="name" maxlength="40" required')+f('aEmail','Email','email','autocomplete="email" required value="'+E+'"')+f('aPass','Password','password','autocomplete="new-password" minlength="8" required')+'<p class="ahint">At least 8 characters, with a lowercase letter and a number.</p>','Create account','<button type="button" class="lnk" data-m="signin">I already have an account</button>'],
+    confirm:['Check your email','We sent a 6-digit code to '+E+'. Enter it to confirm your account.',f('aCode','Code','text','inputmode="numeric" autocomplete="one-time-code" maxlength="8" required'),'Confirm','<button type="button" class="lnk" data-m="resend">Send a new code</button><button type="button" class="lnk" data-m="signin">Back to sign in</button>'],
+    forgot:['Reset your password','Enter your email and we will send you a code.',f('aEmail','Email','email','autocomplete="username" required value="'+E+'"'),'Send code','<button type="button" class="lnk" data-m="signin">Back to sign in</button>'],
+    reset:['Choose a new password','Enter the code we emailed to '+E+' and your new password.',f('aCode','Code','text','inputmode="numeric" autocomplete="one-time-code" maxlength="8" required')+f('aPass','New password','password','autocomplete="new-password" minlength="8" required')+'<p class="ahint">At least 8 characters, with a lowercase letter and a number.</p>','Set password','<button type="button" class="lnk" data-m="signin">Back to sign in</button>']
+  }[mode];
+  $('#authBody').innerHTML='<h1>'+V[0]+'</h1><p class="asub">'+V[1]+'</p>'+(o.msg?'<div class="learned good">'+esc(o.msg)+'</div>':'')+'<div class="aerr" id="aErr" role="alert" hidden></div>'+
+    '<form id="aForm" novalidate>'+V[2]+'<button type="submit" class="btn pri abtn" id="aGo">'+V[3]+'</button></form><div class="alinks">'+V[4]+'</div>';
+  const first=$('#authBody input:not([value]),#authBody input[value=""]')||$('#authBody input'); if(first)first.focus();
+  $('#authBody').onclick=async e=>{const b=e.target.closest('[data-m]');if(!b)return;
+    if(b.dataset.m==='resend'){try{await cog('ResendConfirmationCode',{ClientId:AC.clientId,Username:authMem.email});showAuth('confirm',{msg:'A new code is on its way.'});}catch(x){authErr(x.message);}return;}
+    showAuth(b.dataset.m);};
+  $('#aForm').onsubmit=async e=>{
+    e.preventDefault();
+    const v=id=>{const el=$('#'+id);return el?el.value.trim():'';}, go1=$('#aGo');
+    const need=$$('#aForm input').find(i=>!i.value.trim()); if(need){authErr('Fill in '+need.closest('label').querySelector('span').textContent.toLowerCase()+'.');need.focus();return;}
+    go1.disabled=true; const label=go1.textContent; go1.textContent='Please wait…';
+    try{
+      if(mode==='signin'){authMem.email=v('aEmail');authMem.pass=$('#aPass').value;await doSignIn();return;}
+      if(mode==='signup'){authMem.email=v('aEmail');authMem.pass=$('#aPass').value;
+        await cog('SignUp',{ClientId:AC.clientId,Username:authMem.email,Password:authMem.pass,UserAttributes:[{Name:'email',Value:authMem.email},{Name:'name',Value:v('aName')}]});
+        showAuth('confirm');return;}
+      if(mode==='confirm'){await cog('ConfirmSignUp',{ClientId:AC.clientId,Username:authMem.email,ConfirmationCode:v('aCode')});
+        if(authMem.pass){await doSignIn();}else showAuth('signin',{msg:'Email confirmed. Sign in to continue.'});return;}
+      if(mode==='forgot'){authMem.email=v('aEmail');await cog('ForgotPassword',{ClientId:AC.clientId,Username:authMem.email});showAuth('reset');return;}
+      if(mode==='reset'){authMem.pass=$('#aPass').value;await cog('ConfirmForgotPassword',{ClientId:AC.clientId,Username:authMem.email,ConfirmationCode:v('aCode'),Password:authMem.pass});await doSignIn();return;}
+    }catch(x){
+      if(x.code==='UserNotConfirmedException'){try{await cog('ResendConfirmationCode',{ClientId:AC.clientId,Username:authMem.email});}catch(_){}showAuth('confirm',{msg:'Your email is not confirmed yet. We sent a new code.'});return;}
+      authErr(x.message); go1.disabled=false; go1.textContent=label;
+    }
+  };
+}
+function authErr(t){const el=$('#aErr');if(!el)return;el.textContent=t;el.hidden=false;}
+async function doSignIn(){
+  const j=await cog('InitiateAuth',{AuthFlow:'USER_PASSWORD_AUTH',ClientId:AC.clientId,AuthParameters:{USERNAME:authMem.email,PASSWORD:authMem.pass}});
+  if(!j.AuthenticationResult){const x=new Error('This account needs a step the site does not support yet ('+(j.ChallengeName||'unknown')+').');throw x;}
+  setSession(j.AuthenticationResult,authMem.email); authMem.pass=''; enterApp();
+}
+
 /* a dialog that stays open: onAct(action, modalEl, close) for [data-a] clicks, onSubmit(form, modalEl, close) for forms */
 function modalForm(html,onAct,onSubmit){
   const m=$('#modal'),s=$('#scrim');m.innerHTML=html;m.hidden=false;s.hidden=false;
@@ -936,7 +1119,7 @@ function modalForm(html,onAct,onSubmit){
   m.onclick=e=>{const b=e.target.closest('[data-a]');if(b&&onAct)onAct(b.dataset.a,m,close);};
   m.onsubmit=e=>{e.preventDefault();if(onSubmit)onSubmit(e.target,m,close);};
 }
-$('#profBtn').addEventListener('click',()=>openProfiles());
+$('#profBtn').addEventListener('click',()=>AUTH_ON?openAccount():openProfiles());
 
 /* ================= FLASHCARDS ================= */
 let fq=[], fcur=null, fshown=false, fsess=0, fobj=null, fkeys=null;

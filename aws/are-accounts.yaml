@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  ARE Study System accounts. Email + password sign-in (Amazon Cognito) and a
+  small API that stores each person's study progress (API Gateway + Lambda +
+  DynamoDB). After the stack is created, copy the four Outputs into config.js.
+
+Parameters:
+  SiteOrigin:
+    Type: String
+    Default: '*'
+    Description: >-
+      Web address allowed to call the API, e.g. https://main.d27g401yt8k71l.amplifyapp.com
+      (no trailing slash). Leave * to allow any site.
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: are-study-system-users
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: false
+          RequireSymbols: false
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: Your ARE Study System code
+        EmailMessage: 'Your ARE Study System verification code is {####}'
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: are-study-system-web
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      RefreshTokenValidity: 90
+      TokenValidityUnits:
+        RefreshToken: days
+
+  ProgressTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      TableName: are-study-system-progress
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+
+  ProgressFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: progress-table
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt ProgressTable.Arn
+
+  ProgressFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: are-study-system-progress
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ProgressFunctionRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE: !Ref ProgressTable
+      Code:
+        ZipFile: |
+          // GET /progress returns the signed-in person's saved progress; PUT /progress replaces it.
+          // The person is identified only by the verified sign-in token (the "sub" claim).
+          const { DynamoDBClient, GetItemCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+          const db = new DynamoDBClient({});
+          const TABLE = process.env.TABLE;
+          const json = (code, body) => ({ statusCode: code, headers: { 'content-type': 'application/json' }, body });
+          exports.handler = async (event) => {
+            const claims = event.requestContext && event.requestContext.authorizer && event.requestContext.authorizer.jwt && event.requestContext.authorizer.jwt.claims;
+            const sub = claims && claims.sub;
+            if (!sub) return json(401, '{"error":"not signed in"}');
+            const method = event.requestContext.http.method;
+            if (method === 'GET') {
+              const r = await db.send(new GetItemCommand({ TableName: TABLE, Key: { userId: { S: sub } } }));
+              return json(200, r.Item && r.Item.data ? r.Item.data.S : 'null');
+            }
+            if (method === 'PUT') {
+              const body = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString('utf8') : (event.body || '');
+              if (!body || body.length > 350000) return json(400, '{"error":"progress is empty or too large"}');
+              let parsed;
+              try { parsed = JSON.parse(body); } catch (e) { return json(400, '{"error":"not JSON"}'); }
+              if (!parsed || typeof parsed !== 'object') return json(400, '{"error":"not an object"}');
+              await db.send(new PutItemCommand({ TableName: TABLE, Item: { userId: { S: sub }, data: { S: body }, updatedAt: { N: String(Date.now()) } } }));
+              return { statusCode: 204 };
+            }
+            return json(405, '{"error":"method not allowed"}');
+          };
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: are-study-system-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: [!Ref SiteOrigin]
+        AllowMethods: [GET, PUT, OPTIONS]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+
+  JwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      Name: cognito
+      AuthorizerType: JWT
+      IdentitySource: ['$request.header.Authorization']
+      JwtConfiguration:
+        Audience: [!Ref UserPoolClient]
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+
+  ProgressIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ProgressFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  GetProgressRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /progress
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+      Target: !Sub 'integrations/${ProgressIntegration}'
+
+  PutProgressRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: PUT /progress
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+      Target: !Sub 'integrations/${ProgressIntegration}'
+
+  DefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: '$default'
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ProgressFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/progress'
+
+Outputs:
+  Region:
+    Value: !Ref AWS::Region
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  ApiUrl:
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
