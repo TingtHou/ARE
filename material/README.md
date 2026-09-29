@@ -38,3 +38,19 @@ Each `.js` file opens with a comment that explains its format. Read it before yo
 ## Publishing changes
 
 Opening `are-study-system.html` straight from your computer won't show the notes pages, because browsers block a local page from reading its own folder. The published link reads everything. After you edit, ask Claude to "publish the study system" and the live link updates. Your progress is kept.
+
+## Study packs: importing your own material
+
+Anyone can add their own points, flashcards and questions in bulk from **My material**, then **Import a study pack**. This is personal: it goes into that person's account, not into these shared files.
+
+A study pack is one JSON file. See `study-pack-example.json` for the exact shape:
+
+| List | Each item |
+|---|---|
+| `points` | `division` (PA, PPD, PDD or General), `objective` (like `"4.3"`, optional), `text` |
+| `cards` | `deck`, `division`, `objective`, `question`, `answer` |
+| `questions` | `division`, `objective`, `type` (`mc` or `cata`), `question`, `options`, `correct` (the text of each correct option), `explanation` |
+
+Text can use `- ` bullets, `1. ` steps, `**bold**` and blank lines between paragraphs.
+
+The easiest way to make one is **Get the AI prompt** on the My material page. Paste the prompt and your notes into any AI chat, then import its reply. The whole reply is fine, since the importer finds the JSON inside it. You see a preview before anything is added. Items you already have are skipped, and each pack can be removed in one click.

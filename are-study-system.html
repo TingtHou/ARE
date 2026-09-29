@@ -452,6 +452,14 @@ h3:hover .addpt,.addpt:focus-visible{opacity:1}
 .mrow .mb{flex:0 0 auto;display:flex;gap:12px}
 .fcedit{margin-left:8px;font-size:11px;letter-spacing:0;text-transform:none}
 
+.mtools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 6px;padding:12px 14px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+.mtools .small{color:var(--ink-2);flex:1 1 240px}
+.imsrc{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
+#modal textarea#imText,#modal textarea#apText,#modal textarea#exText{width:100%;font-family:var(--mono);font-size:12px;line-height:1.45;padding:9px 11px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);color:var(--ink);resize:vertical}
+.impv{margin-top:12px;padding:12px 14px;border:1px solid var(--rule);border-radius:9px;background:var(--surface-2);font-family:var(--sans);font-size:13.5px}
+.impv ul{margin:6px 0 8px;padding-left:18px}
+#modal:has(#imText),#modal:has(#apText),#modal:has(#exText){width:min(760px,calc(100vw - 32px))}
+
 /* ---------- responsive: wide desktops ---------- */
 #main{width:100%;max-width:1840px;justify-self:center}
 @media (min-width:1200px){
@@ -1458,15 +1466,25 @@ function initMine(opts){
   const row=(tag,label,btns)=>'<div class="mrow"><span class="obj">'+esc(tag||'—')+'</span><span class="mt">'+esc(label.slice(0,160))+'</span><span class="mb">'+btns+'</span></div>';
   const sec=(title,count,body,add)=>'<h2 class="s">'+title+' <span class="pill">'+count+'</span></h2>'+(add||'')+(body||'<p class="small" style="color:var(--ink-3)">Nothing here yet.</p>');
   const addBtn=(act,label)=>'<div class="row" style="margin:6px 0 12px"><button type="button" class="btn sm pri" data-mact="'+act+'">'+label+'</button></div>';
-  $('#mineBody').innerHTML=
+  const packs=Object.entries((S.custom&&S.custom.packs)||{}).sort((a,b)=>b[1].at-a[1].at);
+  const tools='<div class="mtools"><button type="button" class="btn pri" data-mact="import">Import a study pack</button><button type="button" class="btn" data-mact="prompt">Get the AI prompt</button><button type="button" class="btn" data-mact="export">Export my material</button><span class="small">One file with many points, cards and questions. Ask any AI to turn your notes into one.</span></div>';
+  const packRows=packs.map(([id,p])=>'<div class="mrow"><span class="obj">pack</span><span class="mt">'+esc(p.title)+' <span style="color:var(--ink-3)">· '+[['points','point'],['cards','card'],['questions','question']].map(([k,w])=>{const n=p.counts[k]||0;return n+' '+w+(n===1?'':'s');}).join(', ')+' · '+esc(fmtDate(new Date(p.at)))+'</span></span><span class="mb"><button type="button" class="lnk" data-mpack="'+esc(id)+'" style="color:var(--flag)">Remove pack</button></span></div>').join('');
+  $('#mineBody').innerHTML=tools+
     sec('My study points',pts.length,pts.map(p=>pointHtml(p,true)).join(''),addBtn('newpt','+ New point'))+
     sec('My flashcards',myCards.length,myCards.map(c=>row(c.o,strip(c.q)+' · '+c.d,'<button type="button" class="lnk" data-medit="cards:'+esc(c.id)+'">Edit</button>')).join(''),addBtn('newcard','+ New card'))+
     sec('My practice questions',myItems.length,myItems.map(q=>row(q.o,strip(q.s),'<button type="button" class="lnk" data-medit="items:'+esc(q.id)+'">Edit</button>')).join(''),addBtn('newq','+ New question'))+
     sec('Shared items I changed',edited.length,edited.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-medit="'+x.kind+':'+esc(x.id)+'">Edit</button><button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Restore original</button>')).join(''))+
+    (packs.length?sec('Imported packs',packs.length,packRows):'')+
     sec('Shared items I hid',hidden.length,hidden.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Show again</button>')).join(''));
   const again=()=>go('mine',{keepScroll:true});
   $('#mineBody').onclick=e=>{
-    const t=e.target.closest('[data-mact],[data-medit],[data-mrestore],[data-pedit]'); if(!t)return;
+    const t=e.target.closest('[data-mact],[data-medit],[data-mrestore],[data-pedit],[data-mpack],[data-mpackyes]'); if(!t)return;
+    if(t.dataset.mact==='import')openImport(again);
+    if(t.dataset.mact==='prompt')openAiPrompt();
+    if(t.dataset.mact==='export')openExport();
+    if(t.dataset.mpack){const p=S.custom.packs[t.dataset.mpack];t.parentNode.innerHTML='<span class="small">Remove everything from “'+esc(p.title)+'”? Edits you made to those items go too.</span> <button type="button" class="lnk" data-mpackyes="'+esc(t.dataset.mpack)+'" style="color:var(--flag)">Remove</button> <button type="button" class="lnk" data-mact="cancel">Keep</button>';return;}
+    if(t.dataset.mpackyes){removePack(t.dataset.mpackyes);toast('Pack removed');again();return;}
+    if(t.dataset.mact==='cancel'){again();return;}
     if(t.dataset.mact==='newpt')pointEditor(null,null,again);
     if(t.dataset.mact==='newcard')cardEditor(null,again);
     if(t.dataset.mact==='newq')itemEditor(null,again);
@@ -1475,6 +1493,164 @@ function initMine(opts){
     if(t.dataset.mrestore){const [k,id]=t.dataset.mrestore.split(':');customSet(k,id,null);toast('Restored');again();}
   };
   if(opts&&opts.focus){const el=document.querySelector('[data-pid="'+opts.focus+'"]');if(el)setTimeout(()=>flashEl(el),60);}
+}
+
+/* ================= STUDY PACKS: import / export many points, cards and questions at once =================
+   One JSON object (the format AI tools write most reliably):
+   { "format":"are-study-pack", "version":1, "title":"…",
+     "points":[{"division":"PA","objective":"4.3","text":"…"}],
+     "cards":[{"deck":"…","division":"PPD","objective":"2.2","question":"…","answer":"…"}],
+     "questions":[{"division":"PDD","objective":"3.2","type":"mc","question":"…","options":["…","…"],"correct":["…"],"explanation":"…"}] } */
+const PACK_EXAMPLE={format:'are-study-pack',version:1,title:'PPD egress — my notes',
+  points:[{division:'PPD',objective:'2.2',text:'Occupant load: **business = 150 SF gross** in the 2021 IBC (it was 100 in 2018).\n\n- round occupant load UP\n- check both the capacity and the 44 in minimum'}],
+  cards:[{deck:'PPD · My egress cards',division:'PPD',objective:'2.2',question:'Minimum number of exits for 620 occupants on one storey',answer:'**3 exits.** 1–500 → 2 · 501–1,000 → 3 · over 1,000 → 4.'}],
+  questions:[{division:'PPD',objective:'2.2',type:'mc',question:'A sprinklered Group B floor has an occupant load of 180. Which governs the stair width?',
+    options:['180 × 0.2 in = 36 in','180 × 0.3 in = 54 in','The 44 in minimum stair width','The 36 in minimum for fewer than 50 occupants'],
+    correct:['The 44 in minimum stair width'],explanation:'180 × 0.2 = 36 in is below the 44 in minimum for 50 or more occupants, so the minimum governs. 0.3 in applies only without sprinklers plus voice/alarm.'}]};
+function aiPackPrompt(){
+  return 'Turn my study notes into an ARE study pack for the ARE Study System.\n\n'+
+  'Reply with ONE JSON object and nothing else, in exactly this shape:\n\n'+JSON.stringify(PACK_EXAMPLE,null,2)+'\n\n'+
+  'Rules:\n'+
+  '- "division" is "PA", "PPD" or "PDD" ("General" is allowed for points).\n'+
+  '- "objective" is the NCARB objective number such as "2.2", or "" if none fits.\n'+
+  '- "points": short study notes worth rereading. "text" may use "- " bullets, "1. " steps, **bold**, and blank lines between paragraphs.\n'+
+  '- "cards": flashcards. "question" is a prompt; "answer" is what to recall, complete lists where the exam tests lists.\n'+
+  '- "questions": exam-style items. "type" is "mc" (exactly one correct option) or "cata" (check all that apply, 2+ correct). Give 4 options for mc and 5–6 for cata. "correct" lists the exact text of each correct option. "explanation" says why the answer is right and why each trap is wrong.\n'+
+  '- Only use facts that are in my notes or that you are confident are current (2021 IBC, 2010 ADA Standards, ARE 5.0). Do not invent code section numbers.\n'+
+  '- Leave out any list you have nothing for.\n\n'+
+  'My notes:\n\n[paste your notes here]';
+}
+/* read a pack from text: tolerant of code fences and text around the JSON */
+function parsePack(text){
+  let t=String(text||'').replace(/^﻿/,'').trim();
+  const fence=t.match(/```(?:json)?\s*([\s\S]*?)```/i); if(fence)t=fence[1].trim();
+  const a=t.indexOf('{'), b=t.lastIndexOf('}');
+  if(a<0||b<a)throw new Error('No study pack found. The file should contain one JSON object that starts with { and ends with }.');
+  let j; try{j=JSON.parse(t.slice(a,b+1));}catch(e){throw new Error('This is not valid JSON ('+e.message+'). If an AI wrote it, ask it to "reply with only the JSON object".');}
+  const P={title:String(j.title||'').trim().slice(0,80)||'Study pack',points:[],cards:[],questions:[],problems:[]};
+  const arr=v=>Array.isArray(v)?v:[];
+  const divOf=(d,o)=>{const u=String(d||'').toUpperCase().trim();if(DIVS.includes(u))return u;const m=String(o||'').toUpperCase().match(/^(PA|PPD|PDD)\b/);return m?m[1]:(u==='GENERAL'||u==='GEN'?'GEN':'');};
+  const objOf=o=>{const m=String(o||'').match(/(\d+\.\d+)/);return m?m[1]:'';};
+  const str=v=>typeof v==='string'?v.trim():(v==null?'':String(v).trim());
+  arr(j.points||j.notes).forEach((p,i)=>{
+    const text=str(typeof p==='string'?p:(p.text||p.note||p.content||p.point));
+    if(!text){P.problems.push('Point '+(i+1)+' has no text and was skipped.');return;}
+    const div=divOf(p.division||p.div,p.objective)||'GEN';
+    P.points.push({div,obj:div==='GEN'?'':objOf(p.objective||p.obj),text:text.slice(0,4000)});
+  });
+  arr(j.cards||j.flashcards).forEach((c,i)=>{
+    const q=str(c.question||c.front||c.q), an=str(c.answer||c.back||c.a);
+    if(!q||!an){P.problems.push('Card '+(i+1)+' needs both a question and an answer and was skipped.');return;}
+    const div=divOf(c.division||c.div,c.objective), obj=objOf(c.objective||c.obj);
+    P.cards.push({d:(str(c.deck)||P.title).slice(0,60),o:div&&div!=='GEN'?(obj?div+' '+obj:div):'—',q,a:an});
+  });
+  arr(j.questions||j.items).forEach((q,i)=>{
+    const s=str(q.question||q.stem||q.s), opts=arr(q.options||q.opts||q.choices).map(str).filter(Boolean);
+    const div=divOf(q.division||q.div,q.objective), obj=objOf(q.objective||q.obj), e=str(q.explanation||q.why||q.e);
+    const label='Question '+(i+1)+(s?' (“'+s.slice(0,40)+'…”)':'');
+    if(!s){P.problems.push(label+' has no question text and was skipped.');return;}
+    if(opts.length<2){P.problems.push(label+' needs at least two options and was skipped.');return;}
+    if(!DIVS.includes(div)){P.problems.push(label+' needs a division (PA, PPD or PDD) and was skipped.');return;}
+    const want=arr(q.correct!=null?(Array.isArray(q.correct)?q.correct:[q.correct]):(q.answer!=null?[q.answer]:[])), c=[];
+    want.forEach(w=>{let k=-1;
+      if(typeof w==='number')k=w;
+      else{const t=str(w);k=opts.findIndex(o=>o.toLowerCase()===t.toLowerCase());
+        if(k<0&&/^[A-Za-z]$/.test(t))k=t.toUpperCase().charCodeAt(0)-65;
+        if(k<0&&/^\d+$/.test(t))k=+t;
+        if(k<0)k=opts.findIndex(o=>o.toLowerCase().startsWith(t.toLowerCase().slice(0,25)));}
+      if(k>=0&&k<opts.length&&!c.includes(k))c.push(k);});
+    if(!c.length){P.problems.push(label+' has no correct option that matches one of its options and was skipped.');return;}
+    let t=String(q.type||'').toLowerCase(); t=/cata|all|multi/.test(t)?'cata':(t==='mc'?'mc':(c.length>1?'cata':'mc'));
+    if(t==='mc'&&c.length>1){t='cata';P.problems.push(label+' is marked multiple choice but has '+c.length+' correct options, so it was imported as check-all-that-apply.');}
+    P.questions.push({d:div,o:obj?div+' '+obj:div,t,s,opts,c,e});
+  });
+  if(!P.points.length&&!P.cards.length&&!P.questions.length&&!P.problems.length)throw new Error('The pack has no "points", "cards" or "questions" lists.');
+  return P;
+}
+/* compare against what this person already has, so re-importing doesn't duplicate */
+function packDupes(P){
+  const norm=s=>strip(String(s||'')).toLowerCase().replace(/\s+/g,' ').trim();
+  const havePts=new Set(myPoints().map(p=>norm(md2html(p.text)))), haveQ=new Set(CARDS.map(c=>norm(c.q))), haveS=new Set(ITEMS.map(i=>norm(i.s)));
+  P.points.forEach(p=>{p.dup=havePts.has(norm(md2html(p.text)));});
+  P.cards.forEach(c=>{c.dup=haveQ.has(norm(inlineMd(c.q)));});
+  P.questions.forEach(q=>{q.dup=haveS.has(norm(inlineMd(q.s)));});
+}
+function importPack(P){
+  S.custom=S.custom||{}; ['cards','items','points','packs'].forEach(k=>{S.custom[k]=S.custom[k]||{};});
+  const pid='k'+Date.now().toString(36), now=Date.now(); let n={points:0,cards:0,questions:0};
+  P.points.filter(x=>!x.dup).forEach(p=>{S.custom.points[newUid()]={div:p.div,obj:p.obj,text:p.text,at:now+n.points,pack:pid};n.points++;});
+  P.cards.filter(x=>!x.dup).forEach(c=>{S.custom.cards[newUid()]={d:c.d,o:c.o,q:oneLine(c.q),a:md2html(c.a),qraw:c.q,araw:c.a,at:now,pack:pid};n.cards++;});
+  P.questions.filter(x=>!x.dup).forEach(q=>{S.custom.items[newUid()]={d:q.d,o:q.o,t:q.t,s:oneLine(q.s),opts:q.opts,c:q.c,e:q.e?md2html(q.e).replace(/^<p>([\s\S]*)<\/p>$/,'$1'):'',sraw:q.s,eraw:q.e,at:now,pack:pid};n.questions++;});
+  S.custom.packs[pid]={title:P.title,at:now,counts:n};
+  rebuildMaterial(); save();
+  return n;
+}
+function removePack(pid){
+  const C=S.custom||{};
+  ['cards','items','points'].forEach(k=>{const o=C[k]||{};Object.keys(o).forEach(id=>{if(o[id].pack===pid)delete o[id];});});
+  if(C.packs)delete C.packs[pid];
+  rebuildMaterial(); save();
+}
+function exportPack(){
+  const C=S.custom||{}, pts=myPoints(), mc=CARDS.filter(c=>c.mine), mq=ITEMS.filter(q=>q.mine);
+  const so=o=>{const x=splitObj(o);return {division:x.div==='—'?'':x.div,objective:x.obj};};
+  return {format:'are-study-pack',version:1,title:(curProf().name||'My')+' — study material '+ds(new Date()),
+    points:pts.map(p=>({division:p.div==='GEN'?'General':p.div,objective:p.obj||'',text:p.text})),
+    cards:mc.map(c=>Object.assign({deck:c.d},so(c.o),{question:c.qraw!=null?c.qraw:html2md(c.q),answer:c.araw!=null?c.araw:html2md(c.a)})),
+    questions:mq.map(q=>Object.assign(so(q.o),{type:q.t,question:q.sraw!=null?q.sraw:html2md(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:q.eraw!=null?q.eraw:html2md(q.e)}))};
+}
+async function copyText(t,okMsg,ta){try{await navigator.clipboard.writeText(t);toast(okMsg);}catch(e){if(ta){ta.value=t;ta.select();}toast('Select the text and copy it');}}
+function downloadText(name,text){
+  try{const u=URL.createObjectURL(new Blob([text],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove();},500);return true;}catch(e){return false;}
+}
+const canDownload=!(window.claude&&window.claude.use); // the claude.ai viewer blocks downloads; copy works everywhere
+
+function openImport(done){
+  modalForm('<div class="lbl">My material</div><div class="q">Import a study pack</div>'+
+    '<p class="small">A study pack is one file holding points, flashcards and questions. Choose a <code>.json</code> file, or paste what an AI gave you. Nothing is added until you confirm.</p>'+
+    '<div class="imsrc"><label class="btn sm" for="imFile">Choose file…</label><input type="file" id="imFile" accept=".json,.txt,.md,application/json,text/plain" hidden><span class="small" id="imName" style="color:var(--ink-3)">or paste below</span>'+
+    '<button type="button" class="lnk" data-a="prompt" style="margin-left:auto">Get the AI prompt</button></div>'+
+    '<textarea id="imText" rows="7" placeholder="Paste a study pack here — the whole AI reply is fine" aria-label="Study pack text"></textarea>'+
+    '<div id="imOut"></div><div class="row" id="imActs" style="margin-top:10px"><button type="button" class="btn pri" data-a="check">Check pack</button><button type="button" class="btn" data-a="close">Cancel</button></div>',
+  async(a,m,close)=>{
+    if(a==='close'){close();return;}
+    if(a==='prompt'){close();openAiPrompt();return;}
+    if(a==='check'){
+      const out=$('#imOut',m);
+      let P; try{P=parsePack($('#imText',m).value);}catch(e){out.innerHTML='<div class="aerr" style="margin:10px 0 0">'+esc(e.message)+'</div>';return;}
+      packDupes(P); m._pack=P;
+      const cnt=(l,w)=>{const n=l.filter(x=>!x.dup).length,d=l.length-n;return n+' '+w+(n===1?'':'s')+(d?' <span style="color:var(--ink-3)">('+d+' already in your material, skipped)</span>':'');};
+      const newN=[P.points,P.cards,P.questions].reduce((s,l)=>s+l.filter(x=>!x.dup).length,0);
+      const sample=P.questions.filter(x=>!x.dup).slice(0,2).map(q=>'<li>'+esc(q.o)+' · '+esc(q.s.slice(0,90))+'</li>').concat(P.cards.filter(x=>!x.dup).slice(0,2).map(c=>'<li>'+esc(c.o)+' · '+esc(c.q.slice(0,90))+'</li>')).join('');
+      const size=JSON.stringify(S).length+JSON.stringify(P).length;
+      out.innerHTML='<div class="impv"><b>'+esc(P.title)+'</b><ul><li>'+cnt(P.points,'study point')+'</li><li>'+cnt(P.cards,'flashcard')+'</li><li>'+cnt(P.questions,'practice question')+'</li></ul>'+
+        (sample?'<div class="small" style="color:var(--ink-2)">For example:</div><ul class="small">'+sample+'</ul>':'')+
+        (P.problems.length?'<div class="aerr" style="margin:8px 0 0"><b>'+P.problems.length+' note'+(P.problems.length===1?'':'s')+':</b><ul style="margin:4px 0 0">'+P.problems.slice(0,8).map(x=>'<li>'+esc(x)+'</li>').join('')+(P.problems.length>8?'<li>…and '+(P.problems.length-8)+' more</li>':'')+'</ul></div>':'')+
+        (size>330000?'<div class="aerr" style="margin:8px 0 0">This pack is too large to sync with your account. Split it into smaller packs.</div>':'')+'</div>';
+      $('#imActs',m).innerHTML=(newN&&size<=330000?'<button type="button" class="btn pri" data-a="go">Import '+newN+' item'+(newN===1?'':'s')+'</button>':'')+'<button type="button" class="btn" data-a="check">Check again</button><button type="button" class="btn" data-a="close">Cancel</button>';
+      return;
+    }
+    if(a==='go'&&m._pack){const n=importPack(m._pack);close();toast('Imported '+n.points+' point'+(n.points===1?'':'s')+', '+n.cards+' card'+(n.cards===1?'':'s')+' and '+n.questions+' question'+(n.questions===1?'':'s'));if(done)done();}
+  });
+  const f=$('#imFile'); f.onchange=async()=>{const file=f.files&&f.files[0];if(!file)return;
+    if(file.size>2000000){$('#imOut').innerHTML='<div class="aerr" style="margin:10px 0 0">That file is over 2 MB. A study pack is usually a few KB; split it up.</div>';return;}
+    $('#imName').textContent=file.name; $('#imText').value=await file.text(); $('#modal').querySelector('[data-a="check"]').click();};
+}
+function openAiPrompt(){
+  const p=aiPackPrompt();
+  modalForm('<div class="lbl">Make a study pack with AI</div><div class="q">Copy this prompt</div>'+
+    '<ol class="small" style="margin:0 0 10px"><li>Copy the prompt and paste it into Claude, ChatGPT or any AI chat.</li><li>Replace <b>[paste your notes here]</b> with your notes, or attach your notes file.</li><li>Copy the whole reply, then come back and choose <b>Import a study pack</b>.</li></ol>'+
+    '<textarea id="apText" rows="12" readonly aria-label="AI prompt">'+esc(p)+'</textarea>'+
+    '<div class="row" style="margin-top:10px"><button type="button" class="btn pri" data-a="copy">Copy prompt</button><button type="button" class="btn" data-a="imp">Import a study pack</button><button type="button" class="btn" data-a="close">Done</button></div>',
+  (a,m,close)=>{if(a==='close')close();if(a==='copy')copyText(p,'Prompt copied',$('#apText',m));if(a==='imp'){close();openImport(()=>go('mine',{keepScroll:true}));}});
+}
+function openExport(){
+  const txt=JSON.stringify(exportPack(),null,2), name='are-study-pack-'+ds(new Date())+'.json';
+  modalForm('<div class="lbl">My material</div><div class="q">Export as a study pack</div>'+
+    '<p class="small">Your own points, cards and questions in the study-pack format: a backup, or something to share. Changes you made to shared items are not included.</p>'+
+    '<textarea id="exText" rows="10" readonly aria-label="Study pack">'+esc(txt)+'</textarea>'+
+    '<div class="row" style="margin-top:10px">'+(canDownload?'<button type="button" class="btn pri" data-a="dl">Download .json</button>':'')+'<button type="button" class="btn'+(canDownload?'':' pri')+'" data-a="copy">Copy</button><button type="button" class="btn" data-a="close">Done</button></div>',
+  (a,m,close)=>{if(a==='close')close();if(a==='copy')copyText(txt,'Study pack copied',$('#exText',m));if(a==='dl'){if(downloadText(name,txt))toast('Downloaded '+name);else copyText(txt,'Study pack copied',$('#exText',m));}});
 }
 
 /* ================= PREVIEW SITE + ADMIN PUBLISH =================

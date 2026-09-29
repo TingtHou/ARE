@@ -1,0 +1,37 @@
+{
+  "format": "are-study-pack",
+  "version": 1,
+  "title": "PPD egress — my notes",
+  "points": [
+    {
+      "division": "PPD",
+      "objective": "2.2",
+      "text": "Occupant load: **business = 150 SF gross** in the 2021 IBC (it was 100 in 2018).\n\n- round occupant load UP\n- check both the capacity and the 44 in minimum"
+    }
+  ],
+  "cards": [
+    {
+      "deck": "PPD · My egress cards",
+      "division": "PPD",
+      "objective": "2.2",
+      "question": "Minimum number of exits for 620 occupants on one storey",
+      "answer": "**3 exits.** 1–500 → 2 · 501–1,000 → 3 · over 1,000 → 4."
+    }
+  ],
+  "questions": [
+    {
+      "division": "PPD",
+      "objective": "2.2",
+      "type": "mc",
+      "question": "A sprinklered Group B floor has an occupant load of 180. Which governs the stair width?",
+      "options": [
+        "180 × 0.2 in = 36 in",
+        "180 × 0.3 in = 54 in",
+        "The 44 in minimum stair width",
+        "The 36 in minimum for fewer than 50 occupants"
+      ],
+      "correct": ["The 44 in minimum stair width"],
+      "explanation": "180 × 0.2 = 36 in is below the 44 in minimum for 50 or more occupants, so the minimum governs. 0.3 in applies only without sprinklers plus voice/alarm."
+    }
+  ]
+}
