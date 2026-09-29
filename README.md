@@ -24,3 +24,7 @@ Each person can connect **their own** Anthropic API key with the **Connect Claud
 - **Build my own plan with Claude** on the Study plan page, around their exam dates and weak spots. **Back to the standard plan** undoes it
 
 On the **claude.ai link** the same features need no API key. They run on the viewer's own claude.ai plan (Pro or Max usage), and claude.ai asks each person to allow it the first time.
+
+### The chat panel
+
+**Ask Claude** opens a chat docked on the right, similar to Claude in VS Code. You can resize it by dragging its edge, start a new chat, and reopen past chats from the history list. Past chats are saved on your device. Claude sees the page you're on, which you can turn off with the chip above the input. It can also act on the site: search the material, quiz you and record your answers, run your due flashcards and save your ratings, add cards, questions and study points (each with **Undo**), tick plan tasks and open pages. Type `/` for commands: `/today`, `/quiz PA 4.1`, `/cards`, `/mistakes`, `/explain`, `/weak`, `/plan`, `/make`.

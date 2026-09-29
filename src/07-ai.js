@@ -171,44 +171,6 @@ function aiExplainCard(c,host){
   aiRun(box,{system:AI_SYS,messages:[{role:'user',content:'Flashcard ('+c.o+', deck '+c.d+').\nQuestion: '+strip(c.q)+'\nAnswer: '+strip(c.a)+'\n\nI keep forgetting this. Explain why it is true in plain terms, give one realistic exam-style situation where it decides the answer, and a memory hook. Under 150 words.'}],effort:'low',maxTokens:3000});
 }
 
-/* ---------- 2. study tutor chat ---------- */
-let CHAT=[];
-function chatContext(){
-  const bits=['The student is on the "'+((PAGES.find(p=>p.id===curPage)||{}).n||curPage)+'" page of the study site.'];
-  if(curPage==='cards'&&fcur)bits.push('Current flashcard ('+fcur.o+'): Q: '+strip(fcur.q)+(fshown?' A: '+strip(fcur.a):' (answer not revealed yet — do not give it away unless asked)'));
-  const h=[...view.querySelectorAll('h2.s,h3.s')].find(x=>x.getBoundingClientRect().top>60);
-  if(h&&NOTE_PAGES.includes(curPage))bits.push('They are reading the section: '+h.textContent.replace(/\s+/g,' ').trim());
-  const w=curWeek(), W=PW(w); if(W)bits.push('Study plan week '+w+': '+W.g);
-  const nx=myExams().find(e=>e.date>=midnight(new Date())&&!S.passed[e.d]); if(nx)bits.push('Next exam: '+nx.d+' on '+fmtDate(nx.date,{day:'numeric',month:'long'})+'.');
-  return bits.join('\n');
-}
-function openChat(){
-  if(!needAi(openChat))return;
-  const p=$('#chat'); p.hidden=false; document.body.classList.add('chaton');
-  paintChat(); setTimeout(()=>$('#chatIn').focus(),30);
-}
-function closeChat(){$('#chat').hidden=true;document.body.classList.remove('chaton');}
-function paintChat(){
-  const list=$('#chatLog');
-  list.innerHTML=CHAT.length?CHAT.map(m=>'<div class="cm '+m.role+'">'+(m.role==='user'?esc(m.content).replace(/\n/g,'<br>'):md2html(m.content))+'</div>').join(''):
-    '<div class="cmempty">Ask anything about what you are studying: "why is business 150 SF?", "quiz me on PDD 3.2", "explain this card another way". Claude sees which page, card or section you are on.</div>';
-  list.scrollTop=list.scrollHeight;
-}
-let chatCtl=null;
-async function sendChat(){
-  const inp=$('#chatIn'), q=inp.value.trim(); if(!q||chatCtl)return;
-  inp.value=''; CHAT.push({role:'user',content:q}); CHAT.push({role:'assistant',content:''}); paintChat();
-  const last=$('#chatLog').lastElementChild; last.innerHTML='<span class="small">Thinking…</span>';
-  chatCtl=new AbortController(); $('#chatSend').textContent='Stop';
-  const msgs=CHAT.slice(0,-1).slice(-20).map(m=>({role:m.role,content:m.content}));
-  msgs[msgs.length-1]={role:'user',content:'[Context: '+chatContext()+']\n\n'+q};
-  try{const t=await aiStream({system:AI_SYS+' You are chatting with the student inside their study site; keep answers short unless they ask for more, and end quizzes with the answer only when they reply.',messages:msgs,effort:'low',maxTokens:8000,signal:chatCtl.signal,
-      onText:x=>{last.innerHTML=md2html(x);$('#chatLog').scrollTop=$('#chatLog').scrollHeight;}});
-    CHAT[CHAT.length-1].content=t; chatCtl=null; $('#chatSend').textContent='Send'; paintChat();}
-  catch(e){chatCtl=null;$('#chatSend').textContent='Send';CHAT.pop();CHAT.pop();paintChat();
-    $('#chatLog').insertAdjacentHTML('beforeend','<div class="aerr" style="margin:8px 0">'+esc(e.message)+'</div>');if(!e.aborted)inp.value=q;}
-}
-
 /* ---------- 3. generate cards and questions (drafts go through the study-pack preview) ---------- */
 const PACK_SCHEMA={type:'object',additionalProperties:false,required:['title','points','cards','questions'],properties:{
   title:{type:'string'},
@@ -302,11 +264,4 @@ function openPlanBuilder(){
 
 /* ---------- wiring ---------- */
 if($('#aiBtn'))$('#aiBtn').addEventListener('click',()=>aiReady()?openChat():openClaudeSettings(openChat));
-if($('#chat')){
-  $('#chatClose').onclick=closeChat;
-  $('#chatClear').onclick=()=>{CHAT=[];paintChat();};
-  $('#chatSet').onclick=()=>openClaudeSettings();
-  $('#chatForm').onsubmit=e=>{e.preventDefault();if(chatCtl){chatCtl.abort();return;}sendChat();};
-  $('#chatIn').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#chatForm').requestSubmit();}if(e.key==='Escape')closeChat();});
-}
 paintAiBtn();
