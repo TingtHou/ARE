@@ -6,11 +6,14 @@
 const AI_SDK='https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.129.0/+esm';
 const AI_MODELS=[['claude-opus-5-5','Claude Opus 5.5 · best answers (default)'],['claude-sonnet-5-5','Claude Sonnet 5.5 · faster, costs about half']];
 const LSK='are_claude_key', LSM='are_claude_model';
-const AI_POSSIBLE=!(window.claude&&window.claude.use);
+const AI_MODE=(window.claude&&window.claude.use)?'plan':'key';   // plan: the viewer's own claude.ai plan (sample); key: their own API key
+const AI_POSSIBLE=true;
+let SAMPLE=undefined;   // the claude.ai sample function once resolved; null when this view can't use it
+if(AI_MODE==='plan'){window.claude.use('sample').then(s=>{SAMPLE=s||null;paintAiBtn();}).catch(()=>{SAMPLE=null;paintAiBtn();});}
 let aiMod=null, aiClient=null, aiClientKey=null;
 function aiKey(){try{return localStorage.getItem(LSK)||sessionStorage.getItem(LSK)||'';}catch(e){return '';}}
 function aiModel(){try{const m=localStorage.getItem(LSM);return AI_MODELS.some(x=>x[0]===m)?m:AI_MODELS[0][0];}catch(e){return AI_MODELS[0][0];}}
-const aiReady=()=>AI_POSSIBLE&&!!aiKey();
+const aiReady=()=>AI_MODE==='plan'?!!SAMPLE:!!aiKey();
 function aiStore(key,remember,model){
   try{localStorage.removeItem(LSK);sessionStorage.removeItem(LSK);if(key)(remember?localStorage:sessionStorage).setItem(LSK,key);if(model)localStorage.setItem(LSM,model);}catch(e){}
   aiClient=null; paintAiBtn();
@@ -39,7 +42,26 @@ function aiError(e){
   const x=new Error(t); x.ai=true; x.status=st; return x;
 }
 /* one streamed request; onText(fullTextSoFar) as it arrives; returns the final text */
+/* claude.ai route: sample() has no system prompt, so the instructions lead the first user turn */
+const SAMPLE_MSG={not_granted:'This page is not allowed to use your Claude. Reload the page and choose Allow when claude.ai asks.',sampling_disabled:'Claude is not available for your claude.ai account here.',
+  not_declared:'Claude features are switched off on this page.',capability_disabled:'Claude is not available in this view.',capability_removed:'This Claude app is too old for this feature. Update the app or open claude.ai in a browser.',
+  rate_limited:'You have reached your Claude usage limit, or sent too many requests. Try again later.',session_expired:'Sign in to claude.ai again, then try once more.',
+  refused:'Claude declined this request. Try rewording it.',empty_completion:'Claude returned an empty answer. Try asking for less.',invalid_json:'Claude’s answer was not in the expected format. Try again.',
+  prompt_too_large:'That is too much text for one request. Shorten the notes and try again.'};
+function sampleErr(e){if(e&&e.code==='cancelled')return Object.assign(new Error('Stopped.'),{ai:true,aborted:true});const x=new Error(SAMPLE_MSG[e&&e.code]||'Claude had a problem answering. Try again in a moment.');x.ai=true;x.code=e&&e.code;x.status=e&&e.code==='not_granted'?-3:undefined;return x;}
+function sampleInput(system,messages){
+  const turns=messages.map(m=>({role:m.role,content:String(m.content)}));
+  turns[0]={role:'user',content:(system?'Instructions for this conversation: '+system+'\n\n':'')+turns[0].content};
+  return turns.length===1?turns[0].content:turns;
+}
 async function aiStream({system,messages,effort,maxTokens,onText,schema,signal}){
+  if(AI_MODE==='plan'){
+    if(!SAMPLE)throw Object.assign(new Error(SAMPLE===undefined?'Claude is still starting. Try again in a moment.':'Claude is not available in this view.'),{ai:true});
+    try{const r=await SAMPLE(sampleInput(system,messages),{signal,cache:false,modelTier:effort==='low'?'default':'complex',onText:onText?({text})=>onText(text):undefined});
+      if(r.truncated&&schema)throw Object.assign(new Error('Claude’s answer was cut off. Ask for fewer items at a time.'),{ai:true});
+      return r.text;}
+    catch(e){if(e&&e.ai)throw e;throw sampleErr(e);}
+  }
   const client=await aiGetClient(), model=aiModel();
   const params={model,max_tokens:maxTokens||16000,system,messages,output_config:{effort:effort||'low'},
     betas:['server-side-fallback-2026-07-01'],fallbacks:'default'};
@@ -58,18 +80,36 @@ async function aiStream({system,messages,effort,maxTokens,onText,schema,signal})
     return text;
   }catch(e){if(e&&e.ai)throw e;if(e&&e.name==='AbortError')throw Object.assign(new Error('Stopped.'),{ai:true,aborted:true});throw aiError(e);}
 }
-async function aiJson(opts){const t=await aiStream(Object.assign({},opts,{onText:opts.onText}));try{return JSON.parse(t);}catch(e){const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a>=0&&b>a)return JSON.parse(t.slice(a,b+1));throw Object.assign(new Error('Claude’s answer was not in the expected format. Try again.'),{ai:true});}}
+async function aiJson(opts){
+  if(AI_MODE==='plan'){
+    if(!SAMPLE)throw Object.assign(new Error('Claude is not available in this view.'),{ai:true});
+    const msgs=opts.messages.slice(); const last=msgs[msgs.length-1];
+    msgs[msgs.length-1]={role:'user',content:last.content+'\n\nReply with only one JSON object that matches this JSON Schema exactly (every listed field present, no other fields):\n'+JSON.stringify(opts.schema)};
+    try{return await SAMPLE.json(sampleInput(opts.system,msgs),{signal:opts.signal,cache:false,modelTier:'complex'});}
+    catch(e){throw sampleErr(e);}
+  }
+  const t=await aiStream(Object.assign({},opts,{onText:opts.onText}));try{return JSON.parse(t);}catch(e){const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a>=0&&b>a)return JSON.parse(t.slice(a,b+1));throw Object.assign(new Error('Claude’s answer was not in the expected format. Try again.'),{ai:true});}}
 const AI_SYS='You are a study coach for the ARE 5.0 architecture licensing exams (PA, PPD and PDD). Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Write plainly and briefly for an architecture graduate. Use short paragraphs, "- " bullets and **bold** for the key rule; no headings.';
 
 /* ---------- settings ---------- */
 function paintAiBtn(){
   const b=$('#aiBtn'); if(!b)return;
+  if(AI_MODE==='plan'){b.hidden=SAMPLE===null;b.classList.add('on');b.title='Ask Claude, using your claude.ai plan';$('span',b).textContent='Ask Claude';return;}
   if(!AI_POSSIBLE){b.hidden=true;return;}
   b.hidden=false; b.classList.toggle('on',aiReady());
   b.title=aiReady()?'Ask Claude about what you are studying':'Connect your own Claude';
   $('span',b).textContent=aiReady()?'Ask Claude':'Connect Claude';
 }
 function openClaudeSettings(after){
+  if(AI_MODE==='plan'){
+    modalForm('<div class="lbl">Your Claude</div><div class="q">Claude on your claude.ai plan</div>'+
+      (SAMPLE?'<p class="small">Here on claude.ai, the Claude features use <b>your own claude.ai plan</b> (Pro or Max usage). No API key is needed, and nothing is billed separately. The first time you use one, claude.ai asks you to allow this page.</p>'+
+        '<p class="small">If you chose <b>Don’t allow</b>, reload the page to be asked again.</p>'
+      :'<p class="small">Claude is not available in this view. Open the study site at claude.ai in a browser or the Claude app, signed in to your account.</p>')+
+      '<div class="row" style="margin-top:12px">'+(SAMPLE&&after?'<button type="button" class="btn pri" data-a="go">Continue</button>':'')+'<button type="button" class="btn" data-a="close">Close</button></div>',
+      (a,m,close)=>{close();if(a==='go'&&after)after();});
+    return;
+  }
   const has=!!aiKey(), remembered=(()=>{try{return !!localStorage.getItem(LSK);}catch(e){return false;}})();
   modalForm('<div class="lbl">Your Claude</div><div class="q">Connect your own Claude</div>'+
     '<p class="small">Paste an Anthropic API key to turn on Claude features: explaining mistakes, a study tutor, generating cards and questions, and a personal plan. Requests go straight from this browser to Claude and are billed to <b>your</b> Anthropic account. The key is kept on this device only; it is never saved to your study account or sent to this site.</p>'+

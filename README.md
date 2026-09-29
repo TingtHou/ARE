@@ -23,4 +23,4 @@ Each person can connect **their own** Anthropic API key with the **Connect Claud
 - **Generate with Claude** on My material, Flashcards and Practice. Drafts go through the study-pack preview before anything is added
 - **Build my own plan with Claude** on the Study plan page, around their exam dates and weak spots. **Back to the standard plan** undoes it
 
-These features only work on the website (GitHub/AWS), not inside the claude.ai viewer, which blocks outside network calls.
+On the **claude.ai link** the same features need no API key. They run on the viewer's own claude.ai plan (Pro or Max usage), and claude.ai asks each person to allow it the first time.
