@@ -928,7 +928,7 @@ function initToday(){
     const cardPct=cc.n?cc.strong/cc.n:0, qPct=its.length?ok/its.length:0;
     const ready=Math.round((cardPct*0.5+qPct*0.5)*100);
     return '<div class="exam'+(next===e?' next':'')+(pass?' done':'')+'">'+
-      '<div class="top"><span class="pill '+e.d.toLowerCase()+'">'+e.d+'</span><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+(e.edited?' <em>· your date</em>':'')+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
+      '<div class="top"><span class="pill '+e.d.toLowerCase()+'">'+e.d+'</span><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
       '<div class="days">'+(pass?'Passed':past?'Sat':days)+(!pass&&!past?'<small>'+(days===1?'day':'days')+'</small>':'')+'</div>'+
       '<div class="dt">'+e.n+' · '+e.items+' items</div>'+
       '<div class="meter2" title="Readiness"><i class="g" style="width:'+ready+'%"></i></div>'+
