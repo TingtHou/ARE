@@ -701,7 +701,7 @@ function paintProf(){
 /* who is studying: switch, add, rename, remove, export/import */
 function openProfiles(msg){
   const rows=PROF.list.map(p=>{const st=p.id===PROF.cur?S:(lsLoad(p.id)||{});const n=Object.keys(st.cards||{}).length,a=Object.keys(st.ans||{}).length;
-    return '<div class="prow'+(p.id===PROF.cur?' on':'')+'"><button type="button" class="pick" data-a="use:'+p.id+'"><span class="av">'+esc(initials(p.name))+'</span><span><b>'+esc(p.name)+'</b><small>'+n+' cards rated · '+a+' questions answered'+(p.id===PROF.cur?' · studying now':'')+'</small></span></button>'+
+    return '<div class="prow'+(p.id===PROF.cur?' on':'')+'"><button type="button" class="pick" data-a="use:'+p.id+'"><span class="av">'+esc(initials(p.name))+'</span><span><b>'+esc(p.name)+'</b><small>'+n+' card'+(n===1?'':'s')+' rated · '+a+' question'+(a===1?'':'s')+' answered'+(p.id===PROF.cur?' · studying now':'')+'</small></span></button>'+
       '<button type="button" class="lnk" data-a="ren:'+p.id+'">Rename</button>'+(PROF.list.length>1?'<button type="button" class="lnk" data-a="del:'+p.id+'" style="color:var(--flag)">Remove</button>':'')+'</div>';}).join('');
   modalForm('<div class="lbl">Who is studying?</div><div class="q">Profiles</div><p class="small" style="margin-top:-6px">Each person gets separate flashcard ratings, answers, mistakes and plan checkboxes. Profiles are kept in this browser'+(db&&uid?' and in your claude.ai account':'')+'.</p>'+
     (msg?'<div class="learned good" style="margin:0 0 10px">'+msg+'</div>':'')+
