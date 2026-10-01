@@ -44,3 +44,7 @@ Your Claude plan must allow custom connectors. The connector's code is `aws/conn
 ### The chat panel
 
 On the claude.ai link, **Ask Claude** opens a chat docked on the right, similar to Claude in VS Code. You can resize it by dragging its edge, start a new chat, and reopen past chats from the history list. Past chats are saved on your device. Claude sees the page you're on, which you can turn off with the chip above the input. It can also act on the site: search the material, quiz you and record your answers, run your due flashcards and save your ratings, add cards, questions and study points (each with **Undo**), tick plan tasks and open pages. Type `/` for commands: `/today`, `/quiz PA 4.1`, `/cards`, `/mistakes`, `/explain`, `/weak`, `/plan`, `/make`.
+
+## License
+
+The code is open source under the [MIT License](LICENSE). The study material in `material/` is all rights reserved: see [material/LICENSE.md](material/LICENSE.md).
