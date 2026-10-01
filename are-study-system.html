@@ -387,6 +387,9 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .ahint{font-family:var(--sans);font-size:12px;color:var(--ink-3);margin:-4px 0 12px}
 .abtn{width:100%;min-height:46px;margin-top:4px;font-size:15px}
 .connsteps{padding-left:20px;margin:10px 0}.connsteps li{margin:0 0 8px}
+.libdrop{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1.5px dashed var(--rule);border-radius:10px;padding:14px;margin:8px 0 12px}.libdrop.on{border-color:var(--accent);background:var(--accent-soft)}
+.agdocs{margin:2px 0 4px 22px;max-height:160px;overflow:auto}
+.chagent{max-width:46%;font:12px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--ink)}
 .aisec{border:1px solid var(--rule);border-radius:10px;padding:12px 14px;margin:12px 0}.aisech{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:6px}.aisech b{font-family:var(--sans);font-size:15px}.aisec .row{margin-top:8px}.aisec .aerr{margin:8px 0}
 .connurl{display:flex;gap:6px;margin-top:6px}.connurl input{flex:1;min-width:0;padding:7px 9px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);font:12px var(--mono)}
 .aerr{margin:0 0 12px;padding:9px 12px;border-radius:7px;background:var(--flag-soft);border:1px solid var(--flag);color:var(--flag);font-family:var(--sans);font-size:13px}
@@ -524,7 +527,7 @@ h3:hover .addpt,.addpt:focus-visible{opacity:1}
 .chslash button b{font-family:var(--mono);color:var(--ink);min-width:74px}
 .chslash button.on,.chslash button:hover{background:var(--accent-soft)}
 #chForm{border-top:1px solid var(--rule);padding:10px 12px 12px}
-.chctx{display:flex;gap:6px;margin-bottom:6px;min-height:0}
+.chctx{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px;min-height:0}
 .chchip{display:inline-flex;align-items:center;gap:5px;max-width:100%;font-family:var(--sans);font-size:11.5px;padding:3px 8px;border:1px solid var(--rule);border-radius:6px;background:var(--surface-2);color:var(--ink-2);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chchip svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;flex:0 0 auto}
 .chchip.off{text-decoration:line-through;opacity:.6}
@@ -730,7 +733,7 @@ body.chaton #view .exams{grid-template-columns:repeat(auto-fit,minmax(240px,1fr)
 <template id="tpl-mine">
 <div class="eyebrow">Only you see this · saved to your account</div>
 <h1 class="t">My material</h1>
-<p class="lede">Your own study points, flashcards and questions, plus any shared items you changed or hid. None of it affects anyone else. Points tied to an objective also appear under that heading in the notes.</p>
+<p class="lede">Your own agents, documents, study points, flashcards and questions, plus any shared items you changed or hid. None of it affects anyone else. Points tied to an objective also appear under that heading in the notes.</p>
 <div id="mineBody"></div>
 </template>
 
@@ -1550,13 +1553,14 @@ function initMine(opts){
   const packs=Object.entries((S.custom&&S.custom.packs)||{}).sort((a,b)=>b[1].at-a[1].at);
   const tools='<div class="mtools"><button type="button" class="btn pri" data-mact="import">Import a study pack</button><button type="button" class="btn" data-mact="prompt">Get the AI prompt</button><button type="button" class="btn" data-mact="export">Export my material</button>'+(AI_POSSIBLE?'<button type="button" class="btn" data-mact="gen">Generate with '+AI_NAME()+'</button>':'')+'<span class="small">One file with many points, cards and questions. Ask any AI to turn your notes into one.</span></div>';
   const packRows=packs.map(([id,p])=>'<div class="mrow"><span class="obj">pack</span><span class="mt">'+esc(p.title)+' <span style="color:var(--ink-3)">· '+[['points','point'],['cards','card'],['questions','question']].map(([k,w])=>{const n=p.counts[k]||0;return n+' '+w+(n===1?'':'s');}).join(', ')+' · '+esc(fmtDate(new Date(p.at)))+'</span></span><span class="mb"><button type="button" class="lnk" data-mpack="'+esc(id)+'" style="color:var(--flag)">Remove pack</button></span></div>').join('');
-  $('#mineBody').innerHTML=tools+
+  $('#mineBody').innerHTML=tools+'<div id="agBox"></div><div id="libBox"></div>'+
     sec('My study points',pts.length,pts.map(p=>pointHtml(p,true)).join(''),addBtn('newpt','+ New point'))+
     sec('My flashcards',myCards.length,myCards.map(c=>row(c.o,strip(c.q)+' · '+c.d,'<button type="button" class="lnk" data-medit="cards:'+esc(c.id)+'">Edit</button>')).join(''),addBtn('newcard','+ New card'))+
     sec('My practice questions',myItems.length,myItems.map(q=>row(q.o,strip(q.s),'<button type="button" class="lnk" data-medit="items:'+esc(q.id)+'">Edit</button>')).join(''),addBtn('newq','+ New question'))+
     sec('Shared items I changed',edited.length,edited.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-medit="'+x.kind+':'+esc(x.id)+'">Edit</button><button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Restore original</button>')).join(''))+
     (packs.length?sec('Imported packs',packs.length,packRows):'')+
     sec('Shared items I hid',hidden.length,hidden.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Show again</button>')).join(''));
+  paintAgents(); paintLibrary();
   const again=()=>go('mine',{keepScroll:true});
   $('#mineBody').onclick=e=>{
     const t=e.target.closest('[data-mact],[data-medit],[data-mrestore],[data-pedit],[data-mpack],[data-mpackyes]'); if(!t)return;
@@ -2450,10 +2454,10 @@ function objectiveOptions(sel){
 function openGenerate(preset,done){
   preset=preset||{};
   if(PROV()==='connector'){const what=preset.kind==='cards'?'5 flashcards':preset.kind==='questions'?'5 practice questions':'a few flashcards and practice questions';
-    askClaude('Make '+what+(preset.obj?' on objective '+preset.obj+' ('+objTitle(preset.obj)+')':' on my weakest objective (check weak_spots)')+'. Check my existing material first so you don’t repeat it, show me the drafts, and add them to my material once I say yes.');return;}
+    askClaude('Make '+what+(preset.doc?' from my uploaded document "'+preset.doc.name+'" (document_id '+preset.doc.id+'; read it with search_library)':preset.obj?' on objective '+preset.obj+' ('+objTitle(preset.obj)+')':' on my weakest objective (check weak_spots)')+'. Check my existing material first so you don’t repeat it, show me the drafts, and add them to my material once I say yes.');return;}
   if(!needAi(()=>openGenerate(preset,done)))return;
   modalForm('<div class="lbl">'+AI_NAME()+' · your own material</div><div class="q">Generate study material</div>'+
-    '<p class="small">'+AI_NAME()+' drafts cards and questions; you review them before anything is added to your material.</p>'+
+    '<p class="small">'+AI_NAME()+' drafts cards and questions; you review them before anything is added to your material.</p>'+(preset.doc?'<div class="impv"><b>From your document: '+esc(preset.doc.name)+'</b><p class="small" style="margin:4px 0 0">Give a topic to focus on part of it. Without one, '+AI_NAME()+' works from its first pages.</p></div>':'')+
     '<form class="edf" id="genForm"><div class="edrow"><label class="af" style="flex:2 1 260px"><span>Objective</span><select class="sel" id="genObj"><option value="">Any — use the topic or notes below</option>'+objectiveOptions(preset.obj||'')+'</select></label>'+
     '<label class="af" style="flex:1 1 150px"><span>Make</span><select class="sel" id="genKind"><option value="both">Cards and questions</option><option value="cards"'+(preset.kind==='cards'?' selected':'')+'>Flashcards only</option><option value="questions"'+(preset.kind==='questions'?' selected':'')+'>Questions only</option></select></label>'+
     '<label class="af" style="flex:0 1 100px"><span>How many</span><select class="sel" id="genN"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></label></div>'+
@@ -2462,14 +2466,15 @@ function openGenerate(preset,done){
     '<div id="genMsg"></div><div class="row" id="genActs"><button type="submit" class="btn pri">Generate</button><button type="button" class="btn" data-a="close">Cancel</button></div></form>',
   (a,m,close)=>{if(a==='close'){if(m._ctl)m._ctl.abort();close();}},
   async(form,m,close)=>{
-    const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(), notes=$('#genNotes',m).value.trim();
+    const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(); let notes=$('#genNotes',m).value.trim();
+    if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'â€¦</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldnâ€™t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
     if(!obj&&!topic&&!notes){$('#genMsg',m).innerHTML='<div class="aerr">Choose an objective, or give a topic or notes.</div>';return;}
     const ex=ITEMS.filter(q=>!obj||q.o===obj).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
     const prompt='Write '+want+' for the ARE study pack'+(obj?' on objective '+obj+' ('+objTitle(obj)+')':'')+(topic?', topic: '+topic:'')+'.\n'+
       'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:'PA, PPD or PDD as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+
       'Cards: a prompt and a complete answer (full lists where the exam tests lists). Questions: current NCARB style; "mc" has 4 options and exactly one correct, "cata" has 5–6 options and 2+ correct; "correct" repeats the exact option text; the explanation says why each trap is wrong. Deck: "'+(obj||'My')+' · '+AI_NAME()+'"; title: a short name for this batch.\n'+
-      'Do not repeat questions I already have'+(ex?', such as:\n'+ex:'')+'.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them:\n'+notes.slice(0,20000):'');
+      'Do not repeat questions I already have'+(ex?', such as:\n'+ex:'')+'.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them'+(preset.doc?' (from my document "'+preset.doc.name+'"; put the page in the explanation where it helps)':'')+':\n'+notes.slice(0,24000):'');
     $('#genActs',m).innerHTML='<p class="small" style="margin:0">'+AI_NAME()+' is writing… this can take up to a minute.</p><button type="button" class="btn" data-a="close">Cancel</button>';
     m._ctl=new AbortController();
     try{
@@ -2605,8 +2610,13 @@ function ctxNow(){
 }
 function paintCtx(){
   const c=$('#chCtx'); if(!c)return; const n=ctxNow();
-  c.innerHTML='<button type="button" class="chchip'+(ctxOn?'':' off')+'" id="chCtxBtn" title="'+(ctxOn?'Claude sees this. Click to hide it.':'Hidden from Claude. Click to share it.')+'"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>'+esc(n.label)+'</button>';
+  const ag=curAgent();
+  c.innerHTML='<select class="chagent" id="chAgent" aria-label="Agent" title="Agent: who answers, and from which documents">'+allAgents().map(a=>'<option value="'+esc(a.id)+'"'+(a.id===ag.id?' selected':'')+'>'+esc(a.name)+'</option>').join('')+'<option value="__new">+ New agent…</option></select>'+
+    (CHAT_DOC?'<button type="button" class="chchip" id="chDocBtn" title="Answering from this document. Click to stop.">'+esc(CHAT_DOC.name.slice(0,30))+' ×</button>':'')+
+    '<button type="button" class="chchip'+(ctxOn?'':' off')+'" id="chCtxBtn" title="'+(ctxOn?AI_NAME()+' sees this. Click to hide it.':'Hidden from '+AI_NAME()+'. Click to share it.')+'"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>'+esc(n.label)+'</button>';
   $('#chCtxBtn').onclick=()=>{ctxOn=!ctxOn;paintCtx();};
+  const sel=$('#chAgent'); sel.onchange=()=>{if(sel.value==='__new'){sel.value=ag.id;(AUTH_ON&&LIB.docs===null?libLoad():Promise.resolve()).then(()=>agentEditor(null,()=>{paintCtx();paintAgents();}));return;}setAgent(sel.value);paintCtx();toast('Agent: '+curAgent().name);};
+  const db=$('#chDocBtn'); if(db)db.onclick=()=>{CHAT_DOC=null;$('#chIn').placeholder='Ask, or type / for commands';paintCtx();};
 }
 
 /* ---------- slash commands ---------- */
@@ -2780,18 +2790,20 @@ async function sendChatMsg(){
   paintChatLog(); chatBusy=new AbortController(); $('#chSend').textContent='Stop';
   const paint=()=>{const last=$('#chLog').lastElementChild;if(last){last.outerHTML='<div class="cm assistant">'+am.tools.map(toolRow).join('')+(am.text?mdRich(am.text):'<span class="small chthink">Thinking…</span>')+'</div>';$('#chLog').scrollTop=$('#chLog').scrollHeight;}};
   try{
-    if(PROV()==='chatgpt')await chatViaChatGPT(content,am,paint); else await chatViaPlan(content,am,paint);
+    const ag=await agentContext(prompt); CUR.agent=curAgent().id;
+    if(PROV()==='chatgpt')await chatViaChatGPT(content,am,paint,ag); else await chatViaPlan(content,am,paint,ag);
   }catch(e){am.error=e&&e.aborted?'':String(e&&e.message||'Something went wrong.');if(!am.text&&!am.tools.length&&!e.aborted)inp.value=raw;}
   am.pending=false; chatBusy=null; $('#chSend').textContent='Send';
   const i=CHATS.findIndex(c=>c.id===CUR.id); if(i>=0)CHATS.splice(i,1); CHATS.unshift(CUR); chatsSave();
   paintChatLog(); paintCtx();
 }
 /* claude.ai-plan route: sample() runs the tool rounds and calls these page functions */
-async function chatViaPlan(content,am,paint){
+async function chatViaPlan(content,am,paint,ag){
+  ag=ag||{sys:'',sources:''}; if(ag.sources)content=ag.sources+'\n\n'+content;
   if(!SAMPLE)throw new Error('Claude is not available in this view.');
   let canTools=false; try{const lim=await SAMPLE.limits();canTools=!!lim.tools;}catch(e){}
   const turns=CUR.view.slice(0,-2).filter(m=>m.text).slice(-16).map(m=>({role:m.role,content:m.role==='user'?m.text:m.text.slice(0,4000)}));
-  const input=[{role:'user',content:'Instructions for this conversation: '+CHAT_SYS()+(canTools?'':'\n(Tools are not available in this view: answer from the context given.)')}].concat(turns).concat([{role:'user',content}]);
+  const input=[{role:'user',content:'Instructions for this conversation: '+CHAT_SYS()+ag.sys+(canTools?'':'\n(Tools are not available in this view: answer from the context given.)')}].concat(turns).concat([{role:'user',content}]);
   const opts={signal:chatBusy.signal,onText:({text})=>{am.text=text;paint();}};
   if(canTools)opts.tools=CHAT_TOOLS.map(t=>({name:t.name,description:t.description,inputSchema:t.schema,
     execute:async(inp)=>{const tr={id:'t'+Math.random().toString(36).slice(2,8),name:t.name};am.tools.push(tr);paint();try{const r=await runTool(t.name,inp,tr);paint();return r;}catch(e){paint();throw e;}}}));
@@ -2801,13 +2813,204 @@ async function chatViaPlan(content,am,paint){
 }
 /* ChatGPT route (website): answers stream from aws/chatgpt.js on the person's ChatGPT plan. It has no page tools,
    so it gets a snapshot of the student's status with each message instead. */
-async function chatViaChatGPT(content,am,paint){
+async function chatViaChatGPT(content,am,paint,ag){
+  ag=ag||{sys:'',sources:''}; if(ag.sources)content=ag.sources+'\n\n'+content;
   const snap={};
   ['study_status','weak_spots'].forEach(n=>{try{snap[n]=CHAT_TOOLS.find(t=>t.name===n).run({},{});}catch(e){}});
-  const sys=AI_SYS+'\n\nYou are the study tutor inside the student’s ARE Study System web page, answering on their own ChatGPT plan. You can’t change their data from here: their answers in this chat are not recorded, so for scored practice send them to the Practice, Flashcards or Mistakes pages. You may still quiz them with your own questions, one at a time, waiting for their answer before explaining. Keep replies short unless asked for more. Today is '+ds(new Date())+'.\n\nThe student’s current status (JSON): '+JSON.stringify(snap).slice(0,6000);
+  const sys=AI_SYS+'\n\nYou are the study tutor inside the student’s ARE Study System web page, answering on their own ChatGPT plan. You can’t change their data from here: their answers in this chat are not recorded, so for scored practice send them to the Practice, Flashcards or Mistakes pages. You may still quiz them with your own questions, one at a time, waiting for their answer before explaining. Keep replies short unless asked for more. Today is '+ds(new Date())+'.\n\nThe student’s current status (JSON): '+JSON.stringify(snap).slice(0,6000)+ag.sys;
   const turns=CUR.view.slice(0,-2).filter(m=>m.text).slice(-16).map(m=>({role:m.role,content:m.role==='user'?m.text:m.text.slice(0,4000)}));
   try{am.text=await cgStream({system:sys,messages:turns.concat([{role:'user',content}]),signal:chatBusy.signal,onText:t=>{am.text=t;paint();}});}
   catch(e){if(e&&e.text)am.text=e.text;throw e;}
+}
+
+/* ================= MY LIBRARY AND MY AGENTS =================
+   Library: each person uploads their own documents (PDF, Word, text). The browser extracts the text, cuts it into
+   passages and uploads them to the account (aws/connector.js, /library); the AI searches them to answer, quiz and
+   draft cards and questions. Agents: named instructions plus which documents to use, kept in S.agents, picked in
+   the chat panel. The Claude connector can read both too. */
+const LIB={docs:null,used:0,limit:15e6,busy:'',err:''};
+const PDFJS_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.min.mjs', PDFJS_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.worker.min.mjs';
+const MAMMOTH_URL='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.13.0/mammoth.browser.min.js';
+const LIB_TYPES='.pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv';
+async function libApi(path,opts){
+  const t=await idToken(); if(!t)throw new Error('Sign in to the study website again.');
+  const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+path,Object.assign({},opts,{headers:{authorization:'Bearer '+t,'content-type':'application/json'}}));
+  let j={}; try{j=await r.json();}catch(e){}
+  if(!r.ok)throw new Error(j.error||('The study server answered '+r.status+'.'));
+  return j;
+}
+async function libLoad(){try{const j=await libApi('/library');LIB.docs=j.docs||[];LIB.used=j.used||0;LIB.limit=j.limit||LIB.limit;LIB.err='';}catch(e){LIB.err=e.message;if(!LIB.docs)LIB.docs=null;}return LIB.docs;}
+async function docText(id,topic){
+  if(topic){const j=await libApi('/library/search?q='+encodeURIComponent(topic)+'&docs='+encodeURIComponent(id)+'&k=12');return j.results.map(x=>(x.page?'[p. '+x.page+'] ':'')+x.text).join('\n\n');}
+  const j=await libApi('/library/chunks?id='+encodeURIComponent(id)+'&from=0&n=24');return j.chunks.map(x=>(x.p?'[p. '+x.p+'] ':'')+x.t).join('\n\n');
+}
+
+/* ---------- reading files in the browser ---------- */
+let PDFJS=null;
+async function pdfLib(){
+  if(PDFJS)return PDFJS;
+  const lib=await import(PDFJS_URL);
+  // browsers refuse a worker script from another site, so pdf.js runs on the page instead (its built-in fallback);
+  // pages are read one at a time, so the page stays responsive between them
+  globalThis.pdfjsWorker=await import(PDFJS_WORKER);
+  lib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
+  return PDFJS=lib;
+}
+function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>no(new Error('Could not load '+src));document.head.appendChild(s);});}
+async function readFile(file,onProg){
+  const ext=(file.name.match(/\.([a-z0-9]+)$/i)||['',''])[1].toLowerCase();
+  if(ext==='pdf'){
+    const lib=await pdfLib(), doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise, pages=[];
+    for(let i=1;i<=doc.numPages;i++){const pg=await doc.getPage(i), tc=await pg.getTextContent();pages.push({p:i,text:tc.items.map(it=>(it.str||'')+(it.hasEOL?'\n':' ')).join('')});if(onProg)onProg(i/doc.numPages);}
+    return {type:'pdf',pages,count:doc.numPages};
+  }
+  if(ext==='docx'){
+    if(!window.mammoth)await loadScript(MAMMOTH_URL);
+    const r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});
+    return {type:'docx',pages:[{p:null,text:r.value}],count:null};
+  }
+  if(['html','htm'].includes(ext)){const d=new DOMParser().parseFromString(await file.text(),'text/html');return {type:'html',pages:[{p:null,text:d.body?d.body.innerText||d.body.textContent:''}],count:null};}
+  if(['txt','md','markdown','csv'].includes(ext))return {type:ext,pages:[{p:null,text:await file.text()}],count:null};
+  throw new Error('Can’t read .'+ext+' files. Use PDF, Word (.docx), text or Markdown.');
+}
+/* passages of up to ~1,400 characters that never cross a page, so every passage keeps its page number */
+function chunkPages(pages){
+  const out=[], MAX=1400;
+  pages.forEach(pg=>{
+    const paras=String(pg.text||'').replace(/\r/g,'').split(/\n\s*\n/).map(s=>s.replace(/[ \t]+/g,' ').replace(/\s*\n\s*/g,' ').trim()).filter(Boolean);
+    let cur='';
+    const push=()=>{if(cur.trim())out.push({t:cur.trim(),p:pg.p});cur='';};
+    paras.forEach(para=>{
+      if(para.length>MAX){push();(para.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g)||[para]).forEach(s=>{if((cur+s).length>MAX)push();if(s.length>MAX){for(let i=0;i<s.length;i+=MAX)out.push({t:s.slice(i,i+MAX).trim(),p:pg.p});}else cur+=s;});push();}
+      else if(cur&&(cur.length+para.length+1)>MAX){push();cur=para;}
+      else cur+=(cur?'\n':'')+para;
+    });
+    push();
+  });
+  return out.filter(c=>c.t.length>1);
+}
+async function libUpload(files,box){
+  for(const file of files){
+    try{
+      if(file.size>60e6)throw new Error(file.name+' is larger than 60 MB.');
+      LIB.busy='Reading '+file.name+'…'; paintLibrary(box);
+      const r=await readFile(file,f=>{LIB.busy='Reading '+file.name+'… '+Math.round(f*100)+'%';const s=$('#libBusy');if(s)s.textContent=LIB.busy;});
+      const chunks=chunkPages(r.pages), chars=chunks.reduce((n,c)=>n+c.t.length,0);
+      if(!chars)throw new Error(file.name+' has no text the site can read. If it’s a scanned PDF (pictures of pages), it needs text recognition (OCR) first.');
+      const thin=r.type==='pdf'&&r.count>2&&chars/r.count<150;
+      const parts=[]; let cur=[], size=0;
+      chunks.forEach(c=>{const s=JSON.stringify(c).length;if(cur.length&&size+s>240000){parts.push(cur);cur=[];size=0;}cur.push(c);size+=s;}); if(cur.length)parts.push(cur);
+      if(parts.length>80)throw new Error(file.name+' is too long to add. Split it into smaller files.');
+      const id='d-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+      for(let i=0;i<parts.length;i++){
+        LIB.busy='Uploading '+file.name+'… '+Math.round(i/parts.length*100)+'%'; const s=$('#libBusy'); if(s)s.textContent=LIB.busy;
+        await libApi('/library/upload',{method:'POST',body:JSON.stringify({id,name:file.name,type:r.type,pages:r.count,chars,chunkCount:chunks.length,part:i,parts:parts.length,chunks:parts[i]})});
+      }
+      toast('Added '+file.name+(thin?' · some pages had little text (scanned?)':''));
+      if(thin)LIB.err=file.name+': some pages had very little text. If parts are scanned images, those parts can’t be searched.';
+    }catch(e){LIB.err=e.message||String(e);}
+  }
+  LIB.busy=''; await libLoad(); paintLibrary(box); paintAgents($('#agBox'));
+}
+const kb=n=>n>=1e6?(n/1e6).toFixed(1)+' M':n>=1e3?Math.round(n/1e3)+' K':String(n);
+function paintLibrary(box){
+  box=box||$('#libBox'); if(!box)return;
+  const head='<h2 class="s">My library <span class="pill">'+(LIB.docs?LIB.docs.filter(d=>d.done).length:'·')+'</span></h2>';
+  if(!AUTH_ON){box.innerHTML=head+'<p class="small" style="color:var(--ink-3)">Uploading documents works on the study website, signed in to your account.</p>';return;}
+  if(LIB.docs===null&&!LIB.err){box.innerHTML=head+'<p class="small">Loading your documents…</p>';libLoad().then(()=>paintLibrary(box));return;}
+  const docs=(LIB.docs||[]).slice().sort((a,b)=>b.at-a.at);
+  box.innerHTML=head+'<p class="small">Upload your own books, notes and handouts (PDF, Word, text). The AI reads them to answer your questions, quiz you, and draft cards and questions, and cites the page. Only you can see them. The site keeps the text, not the file.</p>'+
+    '<div class="libdrop" id="libDrop"><button type="button" class="btn pri" data-lib="pick"'+(LIB.busy?' disabled':'')+'>Upload documents</button><span class="small">or drop files here · PDF, .docx, .txt, .md</span><input type="file" id="libFile" multiple accept="'+LIB_TYPES+'" hidden></div>'+
+    (LIB.busy?'<p class="small" id="libBusy">'+esc(LIB.busy)+'</p>':'')+(LIB.err?'<div class="aerr">'+esc(LIB.err)+' <button type="button" class="lnk" data-lib="clearerr">OK</button></div>':'')+
+    (docs.length?docs.map(d=>'<div class="mrow"><span class="obj">'+esc((d.type||'doc').toUpperCase())+'</span><span class="mt">'+esc(d.name)+' <span style="color:var(--ink-3)">· '+(d.pages?d.pages+' pages · ':'')+kb(d.chars||0)+' characters'+(d.done?'':' · upload unfinished')+'</span></span><span class="mb">'+
+      (d.done?'<button type="button" class="lnk" data-libask="'+esc(d.id)+'">Ask about it</button><button type="button" class="lnk" data-libgen="'+esc(d.id)+'">Make cards &amp; questions</button>':'')+'<button type="button" class="lnk" data-libdel="'+esc(d.id)+'">Delete</button></span></div>').join(''):'<p class="small" style="color:var(--ink-3)">No documents yet.</p>')+
+    (docs.length?'<p class="small" style="color:var(--ink-3)">Using '+kb(LIB.used)+' of '+kb(LIB.limit)+' characters.</p>':'');
+  const inp=$('#libFile',box), drop=$('#libDrop',box);
+  inp.onchange=()=>{if(inp.files.length)libUpload([...inp.files],box);};
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add('on');}; drop.ondragleave=()=>drop.classList.remove('on');
+  drop.ondrop=e=>{e.preventDefault();drop.classList.remove('on');if(!LIB.busy&&e.dataTransfer.files.length)libUpload([...e.dataTransfer.files],box);};
+  box.onclick=async e=>{
+    const t=e.target.closest('[data-lib],[data-libask],[data-libgen],[data-libdel],[data-libdelyes]'); if(!t)return;
+    const doc=id=>(LIB.docs||[]).find(d=>d.id===id);
+    if(t.dataset.lib==='pick')inp.click();
+    if(t.dataset.lib==='clearerr'){LIB.err='';paintLibrary(box);}
+    if(t.dataset.libask){const d=doc(t.dataset.libask);if(d)chatAboutDoc(d);}
+    if(t.dataset.libgen){const d=doc(t.dataset.libgen);if(d)openGenerate({doc:{id:d.id,name:d.name}},()=>go('mine',{keepScroll:true}));}
+    if(t.dataset.libdel){const d=doc(t.dataset.libdel);t.parentNode.innerHTML='<span class="small">Delete “'+esc(d.name)+'”?</span> <button type="button" class="lnk" data-libdelyes="'+esc(d.id)+'">Delete</button><button type="button" class="lnk" data-lib="cancel">Keep</button>';}
+    if(t.dataset.lib==='cancel')paintLibrary(box);
+    if(t.dataset.libdelyes){try{await libApi('/library/doc?id='+encodeURIComponent(t.dataset.libdelyes),{method:'DELETE'});
+      Object.values(S.agents||{}).forEach(a=>{if(Array.isArray(a.docs))a.docs=a.docs.filter(x=>x!==t.dataset.libdelyes);});save();toast('Deleted');}catch(err){LIB.err=err.message;}
+      await libLoad();paintLibrary(box);paintAgents($('#agBox'));}
+  };
+}
+
+/* ---------- agents ---------- */
+const AGENT_PRESETS=[
+  {id:'tutor',name:'Study tutor',instructions:''},
+  {id:'examiner',name:'Examiner',instructions:'Act as a strict ARE examiner. Ask one NCARB-style question at a time (multiple choice or check-all-that-apply, lettered options), wait for my answer, then mark it right or wrong with a two-line explanation and the trap. No hints before I answer. Keep score in the chat and make the questions harder after three right in a row.'},
+  {id:'code',name:'Code coach',instructions:'Focus on the 2021 IBC and the 2010 ADA Standards. Always name the section or table, give the number with its conditions, and say plainly when you are not sure. Point out the usual traps: older code editions, net vs gross, sprinklered vs not.'},
+  {id:'explainer',name:'Explainer',instructions:'Explain in plain language for someone meeting the topic for the first time: the idea in one sentence, a concrete building example, an analogy, then a memory hook. Define any jargon you use.'},
+  {id:'planner',name:'Planner',instructions:'Help me plan my study time. Use my plan week, exam dates, due cards, due mistakes and weak spots, and give me a short, prioritized, time-boxed list for today or this week.'}
+].map(a=>Object.assign(a,{preset:true,site:true,docs:'all'}));
+const agentsMine=()=>Object.entries(S.agents||{}).map(([id,a])=>Object.assign({},a,{id,mine:true})).sort((a,b)=>(a.at||0)-(b.at||0));
+const allAgents=()=>AGENT_PRESETS.concat(agentsMine());
+const LSAG='are_agent';
+function curAgent(){let id='tutor';try{id=localStorage.getItem(LSAG+':'+PROF.cur)||'tutor';}catch(e){}return allAgents().find(a=>a.id===id)||AGENT_PRESETS[0];}
+function setAgent(id){try{localStorage.setItem(LSAG+':'+PROF.cur,id);}catch(e){}}
+let CHAT_DOC=null;   // "Ask about it": the chat answers from this one document until cleared
+function chatAboutDoc(d){CHAT_DOC={id:d.id,name:d.name};openChat();paintCtx();const i=$('#chIn');if(i&&!i.value)i.placeholder='Ask about '+d.name+', or “quiz me on it”';}
+const docsLabel=a=>a.docs==='all'?'all my documents':Array.isArray(a.docs)&&a.docs.length?a.docs.map(id=>((LIB.docs||[]).find(d=>d.id===id)||{name:'(deleted)'}).name).join(', '):'no documents';
+function agentEditor(a,done){
+  a=a||{name:'',instructions:'',site:true,docs:'all'};
+  const docs=(LIB.docs||[]).filter(d=>d.done), mode=a.docs==='all'?'all':Array.isArray(a.docs)&&a.docs.length?'some':'none';
+  modalForm('<div class="lbl">My agents</div><div class="q">'+(a.id?'Edit agent':'New agent')+'</div>'+
+    '<form class="edf" id="agForm"><label class="af"><span>Name</span><input id="agName" maxlength="60" required value="'+esc(a.name||'')+'" placeholder="e.g. Structures examiner"></label>'+
+    '<label class="af"><span>Instructions</span><textarea id="agIns" rows="8" maxlength="8000" placeholder="How it should behave: what to focus on, how to quiz you, how long the answers are. You can paste the instructions of a custom GPT here.">'+esc(a.instructions||'')+'</textarea></label>'+
+    '<div class="af"><span>Answer from</span><label class="pass"><input type="checkbox" id="agSite"'+(a.site!==false?' checked':'')+'> The site’s notes and my material</label>'+
+    '<label class="pass"><input type="radio" name="agD" value="all"'+(mode==='all'?' checked':'')+'> All my documents</label>'+
+    '<label class="pass"><input type="radio" name="agD" value="some"'+(mode==='some'?' checked':'')+(docs.length?'':' disabled')+'> Only these documents:</label>'+
+    (docs.length?'<div class="agdocs">'+docs.map(d=>'<label class="pass"><input type="checkbox" class="agDoc" value="'+esc(d.id)+'"'+(Array.isArray(a.docs)&&a.docs.includes(d.id)?' checked':'')+'> '+esc(d.name)+'</label>').join('')+'</div>':'<p class="ahint">Upload documents in My library first.</p>')+
+    '<label class="pass"><input type="radio" name="agD" value="none"'+(mode==='none'?' checked':'')+'> No documents</label></div>'+
+    '<div id="agMsg"></div><div class="row"><button type="submit" class="btn pri">Save agent</button><button type="button" class="btn" data-a="close">Cancel</button>'+(a.id&&a.mine?'<button type="button" class="btn" data-a="del" style="color:var(--flag)">Delete</button>':'')+'</div></form>',
+  (act,m,close)=>{if(act==='close')close();if(act==='del'){delete S.agents[a.id];if(curAgent().id===a.id)setAgent('tutor');save();close();toast('Agent deleted');if(done)done();}},
+  (form,m,close)=>{
+    const name=$('#agName',m).value.trim(), ins=$('#agIns',m).value.trim(), dm=(m.querySelector('input[name="agD"]:checked')||{}).value||'all';
+    const picked=[...m.querySelectorAll('.agDoc:checked')].map(x=>x.value);
+    if(!name){$('#agMsg',m).innerHTML='<div class="aerr">Give it a name.</div>';return;}
+    if(dm==='some'&&!picked.length){$('#agMsg',m).innerHTML='<div class="aerr">Tick at least one document, or choose All or None.</div>';return;}
+    const mine=agentsMine(); if(!a.id&&mine.length>=12){$('#agMsg',m).innerHTML='<div class="aerr">You can have up to 12 agents. Delete one first.</div>';return;}
+    S.agents=S.agents||{}; const id=a.mine?a.id:'g'+Date.now().toString(36);
+    S.agents[id]={name:name.slice(0,60),instructions:ins.slice(0,8000),site:$('#agSite',m).checked,docs:dm==='all'?'all':dm==='some'?picked:[],at:a.at||Date.now()};
+    save(); setAgent(id); close(); toast('Agent saved · picked in the chat'); if(done)done();
+  });
+}
+function paintAgents(box){
+  box=box||$('#agBox'); if(!box)return;
+  const mine=agentsMine();
+  box.innerHTML='<h2 class="s">My agents <span class="pill">'+mine.length+'</span></h2><p class="small">An agent is a study helper with your own instructions, answering from the documents you choose. Pick one at the bottom of the chat panel. It works with ChatGPT on this site and with Claude through the connector (“use my Structures examiner agent”). Built in: '+AGENT_PRESETS.slice(1).map(a=>esc(a.name)).join(', ')+'.</p>'+
+    '<div class="row" style="margin:6px 0 12px"><button type="button" class="btn sm pri" data-ag="new">+ New agent</button></div>'+
+    (mine.length?mine.map(a=>'<div class="mrow"><span class="obj">agent</span><span class="mt">'+esc(a.name)+' <span style="color:var(--ink-3)">· '+esc([a.site!==false?'site notes':'',docsLabel(a)].filter(Boolean).join(' + '))+'</span></span><span class="mb"><button type="button" class="lnk" data-agchat="'+esc(a.id)+'">Chat</button><button type="button" class="lnk" data-agedit="'+esc(a.id)+'">Edit</button></span></div>').join(''):'<p class="small" style="color:var(--ink-3)">No agents of your own yet.</p>');
+  box.onclick=e=>{const t=e.target.closest('[data-ag],[data-agchat],[data-agedit]');if(!t)return;
+    const again=()=>{paintAgents(box);paintCtx();};
+    if(t.dataset.ag==='new'){if(AUTH_ON&&LIB.docs===null)libLoad().then(()=>agentEditor(null,again));else agentEditor(null,again);}
+    if(t.dataset.agedit){const a=allAgents().find(x=>x.id===t.dataset.agedit);if(a)agentEditor(a,again);}
+    if(t.dataset.agchat){setAgent(t.dataset.agchat);CHAT_DOC=null;openChat();paintCtx();}};
+}
+/* what the chosen agent adds to a chat message: its instructions, and passages from its sources */
+async function agentContext(q){
+  const ag=curAgent();
+  const sys=ag.instructions?'\n\nYou are the student’s agent “'+ag.name+'”. Follow these instructions from the student:\n'+ag.instructions:'';
+  const src=[]; let docs=null, useDocs=false;
+  if(CHAT_DOC){docs=[CHAT_DOC.id];useDocs=true;}
+  else if(ag.docs==='all'){useDocs=LIB.docs===null||LIB.docs.some(d=>d.done);}
+  else if(Array.isArray(ag.docs)&&ag.docs.length){docs=ag.docs;useDocs=true;}
+  if(useDocs&&AUTH_ON&&AI_MODE!=='plan'&&q.trim()){
+    try{const j=await libApi('/library/search?q='+encodeURIComponent(q.slice(0,400))+(docs?'&docs='+encodeURIComponent(docs.join(',')):'')+'&k='+(CHAT_DOC?8:6));
+      j.results.forEach((x,i)=>src.push('[S'+(i+1)+'] '+x.name+(x.page?', p. '+x.page:'')+':\n'+x.text));}catch(e){}
+  }
+  if(ag.site!==false&&!CHAT_DOC&&q.trim())search(q).slice(0,4).forEach((h,i)=>src.push('[N'+(i+1)+'] '+h.k+' · '+h.t+':\n'+h.x.slice(0,600)));
+  const focus=CHAT_DOC?'\n\nThe student is asking about their document “'+CHAT_DOC.name+'”. Answer from it; to quiz them, write questions from its passages, one at a time.':'';
+  return {sys:sys+focus,sources:src.length?'[Passages found for this message. Base your answer on them when they cover it and cite them like [S1] or [N2], with the page for documents. If they don’t cover it, say so, then answer from general knowledge.]\n\n'+src.join('\n\n'):(useDocs&&!CHAT_DOC?'':CHAT_DOC?'[No passage in “'+CHAT_DOC.name+'” matched this message. Say so if you need the document to answer.]':'')};
 }
 boot();
 })();

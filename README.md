@@ -35,6 +35,8 @@ In any Claude chat, Claude can then:
 - add cards, questions and study points to **My material**, and remove the ones it added
 - tick plan tasks, and save your own week-by-week plan
 
+**Your own documents and agents:** upload PDFs, Word files and notes to **My library**, and make **agents** with your own instructions that answer from them, quiz you and draft cards and questions. They work with ChatGPT on the website and with Claude through the connector. See [aws/SETUP.md](aws/SETUP.md), "My library and my agents".
+
 Everything saves to your study account, so the website shows it the next time you open it or switch back to its tab.
 
 The **Explain with Claude**, **Generate with Claude** and **Build my own plan with Claude** buttons on the website open a new Claude chat with the request already typed. The request is also copied to the clipboard, in case the box is empty.

@@ -27,7 +27,21 @@ function D() {
   const key = k => ({ userId: { S: k } });
   deps = {
     async get(k) { const r = await db.send(new ddb.GetItemCommand({ TableName: TABLE, Key: key(k), ConsistentRead: true })); return r.Item ? { data: r.Item.data && r.Item.data.S, updatedAt: r.Item.updatedAt ? Number(r.Item.updatedAt.N) : null, ttl: r.Item.ttl ? Number(r.Item.ttl.N) : null } : null; },
-    async put(k, data, ttl) { await db.send(new ddb.PutItemCommand({ TableName: TABLE, Item: Object.assign(key(k), { data: { S: data }, ttl: { N: String(ttl) } }) })); },
+    async put(k, data, ttl) { await db.send(new ddb.PutItemCommand({ TableName: TABLE, Item: Object.assign(key(k), { data: { S: data } }, ttl ? { ttl: { N: String(ttl) } } : {}) })); },
+    async del(k) { await db.send(new ddb.DeleteItemCommand({ TableName: TABLE, Key: key(k) })); },
+    async getMany(keys) {
+      const out = {};
+      for (let i = 0; i < keys.length; i += 100) {
+        let req = { [TABLE]: { Keys: keys.slice(i, i + 100).map(key), ConsistentRead: true } };
+        for (let n = 0; n < 6 && req && Object.keys(req).length; n++) {
+          const r = await db.send(new ddb.BatchGetItemCommand({ RequestItems: req }));
+          ((r.Responses || {})[TABLE] || []).forEach(it => { out[it.userId.S] = it.data && it.data.S; });
+          req = r.UnprocessedKeys && r.UnprocessedKeys[TABLE] ? r.UnprocessedKeys : null;
+          if (req) await new Promise(res => setTimeout(res, 100 * (n + 1)));
+        }
+      }
+      return out;
+    },
     async take(k) { const r = await db.send(new ddb.DeleteItemCommand({ TableName: TABLE, Key: key(k), ReturnValues: 'ALL_OLD' })); return r.Attributes && r.Attributes.data ? { data: r.Attributes.data.S, ttl: Number(r.Attributes.ttl && r.Attributes.ttl.N || 0) } : null; },
     async putProgress(sub, data, prevAt) {
       try {
@@ -225,6 +239,100 @@ const custom = (S, kind) => { S.custom = S.custom || {}; S.custom[kind] = S.cust
 const OBJ = (props, req) => ({ type: 'object', properties: props || {}, required: req || [], additionalProperties: false });
 const RO = { readOnlyHint: true, openWorldHint: false }, RW = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 
+/* ---------- each person's library: their uploaded documents, kept as text in chunks and searched for answers ----------
+   The browser extracts the text (PDF, Word, text) and uploads it in parts; the original files are not kept.
+   lib#<sub>#meta            { docs: [{ id, name, type, pages, chars, chunks, parts, at, done }] }
+   lib#<sub>#<doc>#<part>    [{ t: text, p: page }]                                                           */
+const LIB_MAX_CHARS = 15e6, LIB_MAX_DOCS = 60, LIB_PART_MAX = 320000, LIB_MAX_PARTS = 80;
+const libMetaKey = sub => 'lib#' + sub + '#meta', libPartKey = (sub, d, i) => 'lib#' + sub + '#' + d + '#' + i;
+async function libMeta(sub) {
+  const r = await D().get(libMetaKey(sub)); let m = { docs: [] };
+  try { if (r && r.data) m = JSON.parse(r.data); } catch (e) { }
+  if (!Array.isArray(m.docs)) m.docs = [];
+  return { m, at: r ? r.updatedAt : null };
+}
+async function libChange(sub, fn) {
+  for (let i = 0; i < 6; i++) {
+    const { m, at } = await libMeta(sub); const out = fn(m);
+    if (await D().putProgress(libMetaKey(sub), JSON.stringify(m), at)) return out;
+  }
+  throw new Error('The library changed several times at once. Try again.');
+}
+const LIBC = {};   // loaded chunks per person, while this function stays warm
+const STOP = new Set('a an and are as at be by for from has have in is it its of on or that the this to was were will with what which how why when where who not no can do does you your i my me'.split(' '));
+const toks = s => (String(s).toLowerCase().match(/[a-z0-9]+(?:[.'][a-z0-9]+)*/g) || []).filter(w => w.length > 1 && !STOP.has(w));
+async function libChunks(sub) {
+  const { m } = await libMeta(sub);
+  const docs = m.docs.filter(d => d.done);
+  const sig = docs.map(d => d.id + ':' + d.at).join('|');
+  let c = LIBC[sub];
+  if (!c || c.sig !== sig) {
+    const keys = []; docs.forEach(d => { for (let i = 0; i < d.parts; i++) keys.push(libPartKey(sub, d.id, i)); });
+    const got = await D().getMany(keys), chunks = [];
+    docs.forEach(d => { for (let i = 0; i < d.parts; i++) { let arr = []; try { arr = JSON.parse(got[libPartKey(sub, d.id, i)] || '[]'); } catch (e) { }
+      arr.forEach((x, k) => { const tk = toks(x.t); const tf = {}; tk.forEach(w => { tf[w] = (tf[w] || 0) + 1; }); chunks.push({ d: d.id, name: d.name, p: x.p || null, i: chunks.length, t: x.t, tf, len: tk.length }); }); } });
+    const df = {}; chunks.forEach(ch => Object.keys(ch.tf).forEach(w => { df[w] = (df[w] || 0) + 1; }));
+    c = LIBC[sub] = { sig, chunks, df, avg: chunks.reduce((n, ch) => n + ch.len, 0) / (chunks.length || 1) };
+  }
+  return c;
+}
+// BM25 over the person's chunks; phrases and code sections ("1004.5") count as words
+async function libSearch(sub, q, ids, k) {
+  const c = await libChunks(sub), terms = [...new Set(toks(q))], N = c.chunks.length;
+  if (!terms.length || !N) return [];
+  const scored = [];
+  c.chunks.forEach(ch => {
+    if (ids && !ids.includes(ch.d)) return;
+    let s = 0;
+    terms.forEach(w => { const f = ch.tf[w]; if (!f) return; const idf = Math.log(1 + (N - c.df[w] + 0.5) / (c.df[w] + 0.5)); s += idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * ch.len / c.avg)); });
+    if (s > 0) { if (ch.t.toLowerCase().includes(String(q).toLowerCase().trim())) s *= 1.5; scored.push([s, ch]); }
+  });
+  return scored.sort((a, b) => b[0] - a[0]).slice(0, Math.max(1, Math.min(12, k || 6))).map(([s, ch]) => ({ doc: ch.d, name: ch.name, page: ch.p, text: ch.t.slice(0, 1800), score: Math.round(s * 100) / 100 }));
+}
+async function library(ev, sub, path, method, q) {
+  if (path === '/library' && method === 'GET') {
+    const { m } = await libMeta(sub);
+    return jres(200, { docs: m.docs, used: m.docs.reduce((n, d) => n + (d.chars || 0), 0), limit: LIB_MAX_CHARS, maxDocs: LIB_MAX_DOCS });
+  }
+  if (path === '/library/upload' && method === 'POST') {
+    const raw = ev.isBase64Encoded ? Buffer.from(ev.body || '', 'base64').toString('utf8') : (ev.body || '');
+    if (raw.length > LIB_PART_MAX + 20000) return jres(413, { error: 'This part is too large.' });
+    let b; try { b = JSON.parse(raw); } catch (e) { return jres(400, { error: 'Not JSON.' }); }
+    const id = String(b.id || ''), part = +b.part, parts = +b.parts;
+    if (!/^[a-z0-9-]{8,40}$/.test(id) || !(part >= 0) || !(parts >= 1) || part >= parts || parts > LIB_MAX_PARTS || !Array.isArray(b.chunks)) return jres(400, { error: 'Bad upload.' });
+    const chunks = b.chunks.filter(x => x && typeof x.t === 'string' && x.t.trim()).map(x => ({ t: x.t.slice(0, 4000), p: Number.isInteger(x.p) ? x.p : null }));
+    if (part === 0) {
+      const err = await libChange(sub, m => {
+        const others = m.docs.filter(d => d.id !== id);
+        if (others.length >= LIB_MAX_DOCS) return 'Your library is full (' + LIB_MAX_DOCS + ' documents). Delete one first.';
+        if (others.reduce((n, d) => n + (d.chars || 0), 0) + (+b.chars || 0) > LIB_MAX_CHARS) return 'This document would take your library past its ' + Math.round(LIB_MAX_CHARS / 1e6) + ' million characters. Delete something first.';
+        m.docs = others.concat([{ id, name: String(b.name || 'Document').slice(0, 120), type: String(b.type || '').slice(0, 10), pages: +b.pages || null, chars: +b.chars || 0, chunks: +b.chunkCount || 0, parts, at: Date.now(), done: false }]);
+        return null;
+      });
+      if (err) return jres(400, { error: err });
+    }
+    await D().put(libPartKey(sub, id, part), JSON.stringify(chunks));
+    if (part === parts - 1) await libChange(sub, m => { const d = m.docs.find(x => x.id === id); if (d) { d.done = true; d.at = Date.now(); } });
+    return jres(200, { ok: true });
+  }
+  if (path === '/library/doc' && method === 'DELETE') {
+    const id = String(q.id || '');
+    const gone = await libChange(sub, m => { const d = m.docs.find(x => x.id === id); m.docs = m.docs.filter(x => x.id !== id); return d; });
+    if (gone) for (let i = 0; i < (gone.parts || 0); i++) await D().del(libPartKey(sub, id, i));
+    delete LIBC[sub];
+    return jres(200, { ok: true, removed: !!gone });
+  }
+  if (path === '/library/search' && method === 'GET') {
+    const ids = q.docs ? String(q.docs).split(',').filter(Boolean) : null;
+    return jres(200, { results: await libSearch(sub, String(q.q || ''), ids, +q.k || 6) });
+  }
+  if (path === '/library/chunks' && method === 'GET') {
+    const all = (await libChunks(sub)).chunks.filter(ch => ch.d === String(q.id || '')), from = Math.max(0, +q.from || 0), n = Math.max(1, Math.min(60, +q.n || 20));
+    return jres(200, { total: all.length, chunks: all.slice(from, from + n).map(ch => ({ t: ch.t, p: ch.p })) });
+  }
+  return jres(404, { error: 'not found' });
+}
+
 /* ---------- the tools ---------- */
 const TOOLS = [
   { name: 'study_status', title: 'Study status', annotations: RO, description: 'The student’s current situation: today’s date, study-plan week and its tasks (with task_id and done), exam dates and days left, flashcard and question counts, and how many mistakes are due. Use at the start of planning or "what should I do" questions.',
@@ -296,6 +404,15 @@ const TOOLS = [
   { name: 'remove_my_material', title: 'Remove my material', annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, write: true, description: 'Remove a card, question or point the student added (ids start with "u"), for example to undo something you just added. Never removes shared material.',
     inputSchema: OBJ({ kind: { type: 'string', enum: ['cards', 'items', 'points'], description: 'cards, items (practice questions) or points' }, id: { type: 'string' } }, ['kind', 'id']),
     run: (X, i) => { const id = String(i.id || ''), box = (X.S.custom || {})[i.kind]; if (!/^u/.test(id) || !box || !box[id]) throw new Error('No item of yours with that id.'); delete box[id]; return { removed: id }; } },
+  { name: 'list_library', title: 'List my documents', annotations: RO, description: 'The documents the student uploaded to their library (books, notes, handouts), with ids, page counts and sizes.',
+    inputSchema: OBJ(), run: async X => { const { m } = await libMeta(X.sub); return m.docs.filter(d => d.done).map(d => ({ document_id: d.id, name: d.name, pages: d.pages, characters: d.chars })); } },
+  { name: 'search_library', title: 'Search my documents', annotations: RO, description: 'Search the student’s uploaded documents and return the best passages with document name and page. Use it to answer from their own material, to quiz them on it (write questions from the passages), and cite as "name, p. N".',
+    inputSchema: OBJ({ query: { type: 'string' }, document_ids: { type: 'array', items: { type: 'string' }, description: 'Limit to these documents (from list_library); omit for all' }, count: { type: 'integer', minimum: 1, maximum: 12 } }, ['query']),
+    run: async (X, i) => { const r = await libSearch(X.sub, String(i.query || ''), Array.isArray(i.document_ids) && i.document_ids.length ? i.document_ids.map(String) : null, +i.count || 6);
+      return r.length ? r.map(x => ({ document: x.name, document_id: x.doc, page: x.page, passage: x.text })) : 'Nothing in the student’s documents matches. Try other words, or check list_library.'; } },
+  { name: 'list_agents', title: 'List my study agents', annotations: RO, description: 'The study agents the student made on the website: name, instructions to follow, and which of their documents each one uses. When the student asks for one by name, follow its instructions for the rest of the chat and use search_library limited to its documents.',
+    inputSchema: OBJ(), run: X => { const a = X.S.agents || {}; const list = Object.keys(a).map(k => ({ agent_id: k, name: a[k].name, instructions: a[k].instructions, documents: a[k].docs === 'all' ? 'all of their documents' : a[k].docs, uses_site_material: a[k].site !== false }));
+      return list.length ? list : 'The student hasn’t made any agents yet. They can on the website: My material → My agents.'; } },
   { name: 'set_study_plan', title: 'Save my own study plan', annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, write: true, description: 'Replace the student’s study plan with their own week-by-week plan (only after they agree to it). One entry per calendar week, from/to as YYYY-MM-DD, 4–7 one-sentence tasks each; exam is e.g. "PA exam — Thursday 22 October" in an exam week, otherwise "". Ticks on the standard plan are kept, and use_standard_plan switches back.',
     inputSchema: OBJ({ summary: { type: 'string' }, weeks: { type: 'array', minItems: 1, maxItems: 40, items: OBJ({ from: { type: 'string' }, to: { type: 'string' }, goal: { type: 'string' }, exam: { type: 'string' }, tasks: { type: 'array', items: { type: 'string' } } }, ['from', 'to', 'goal', 'tasks']) } }, ['summary', 'weeks']),
     run: (X, i) => { const mon = s => 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ')[+s.slice(5, 7) - 1];
@@ -311,7 +428,7 @@ const TOOLS = [
     run: (X, i) => { const id = String(i.task_id || ''); if (!/^c?w\d+t\d+$/.test(id)) throw new Error('Unknown task_id.'); if (i.done) X.S.plan[id] = 1; else delete X.S.plan[id]; logAct(X.S); return { ok: true }; } }
 ];
 const INSTRUCTIONS = 'This is the student’s ARE Study System (ARE 5.0: PA, PPD and PDD). The tools read and update the same progress the student sees on the study website, so answers, ratings and added material show up there too. ' +
-  'Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Prefer the site’s own material (search_material, get_notes) for facts. ' +
+  'Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Prefer the site’s own material (search_material, get_notes) and the student’s uploaded documents (search_library) for facts, and cite them. The student may have made study agents on the website (list_agents): when they name one, follow its instructions and use its documents. ' +
   'When quizzing, ask one question at a time with lettered options, wait for the student’s reply, then call record_answer before explaining. Never reveal an answer or explanation before the student responds. For flashcards, show the question, wait, reveal the answer, then ask how it went and call rate_flashcard. Keep replies short unless asked for more.';
 
 async function callTool(sub, name, args) {
@@ -322,7 +439,7 @@ async function callTool(sub, name, args) {
     const row = await D().get(sub);
     let S = blankState();
     if (row && row.data) { try { const p = JSON.parse(row.data); if (p && p.v === 2) S = Object.assign(S, p); } catch (e) { } }
-    const X = study(M, normalize(S));
+    const X = study(M, normalize(S)); X.sub = sub;
     let out;
     try { out = await t.run(X, args || {}); }
     catch (e) { return { content: [{ type: 'text', text: 'Error: ' + String(e && e.message || e) }], isError: true }; }
@@ -479,6 +596,11 @@ exports.handler = async (ev) => {
       return tokErr(400, 'unsupported_grant_type', 'Use authorization_code or refresh_token.');
     }
     if (path === '/' && method === 'GET') return jres(200, { name: 'ARE Study System connector', mcp: base + '/mcp' });
+    if (path.startsWith('/library')) {
+      const cl = ev.requestContext.authorizer && ev.requestContext.authorizer.jwt && ev.requestContext.authorizer.jwt.claims;
+      if (!cl || !cl.sub) return jres(401, { error: 'Sign in first.' });
+      return await library(ev, cl.sub, path, method, q);
+    }
     if (path === '/chatgpt-config' && method === 'GET') return jres(200, { url: String(process.env.CHATGPT_URL || '').replace(/\/+$/, '') });   // where the website finds the ChatGPT service
     return jres(404, { error: 'not found' });
   } catch (e) {

@@ -148,3 +148,13 @@ Nothing beyond the stack update:
 - **Revoked access:** if you remove the app in ChatGPT, or the sign-in stops working, the site shows **Connect again**. **Disconnect** on the website revokes the sign-in and deletes the stored credentials.
 - **Separate accounts:** each study account has its own ChatGPT connection, and one ChatGPT account can only be connected to one study account.
 - **Recording answers:** the chat panel's ChatGPT answers see your study status, but can't record answers or change your material. Use Practice and Flashcards for that, or the Claude connector.
+
+# My library and my agents
+
+**My library** (My material page) holds each person's own documents: PDF, Word (.docx), text and Markdown. The browser reads the text, cuts it into passages that remember their page, and uploads them to the person's account. The original file isn't kept. When you chat, an agent finds the best passages for each question and answers from them, citing the page. **Make cards & questions** drafts flashcards and practice questions from a document; you review them, and they're added to My material, where Practice records your answers.
+
+**My agents** are study helpers you make: a name, instructions (you can paste a custom GPT's instructions), and which documents to answer from. Pick one at the bottom of the chat panel. The Claude connector can use them too: ask Claude to "use my Structures examiner agent".
+
+Limits per person: 60 documents and 15 million characters of text, about 30 big textbooks. Scanned PDFs, which are pictures of pages, have no text to read and need OCR first.
+
+**To turn it on**, update the stack once more with the new `aws/are-accounts.yaml`, the same way as before. It adds the `/library` routes and lets the connector read your documents. It all stays in the same free DynamoDB table.

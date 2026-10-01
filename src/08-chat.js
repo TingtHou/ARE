@@ -70,8 +70,13 @@ function ctxNow(){
 }
 function paintCtx(){
   const c=$('#chCtx'); if(!c)return; const n=ctxNow();
-  c.innerHTML='<button type="button" class="chchip'+(ctxOn?'':' off')+'" id="chCtxBtn" title="'+(ctxOn?'Claude sees this. Click to hide it.':'Hidden from Claude. Click to share it.')+'"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>'+esc(n.label)+'</button>';
+  const ag=curAgent();
+  c.innerHTML='<select class="chagent" id="chAgent" aria-label="Agent" title="Agent: who answers, and from which documents">'+allAgents().map(a=>'<option value="'+esc(a.id)+'"'+(a.id===ag.id?' selected':'')+'>'+esc(a.name)+'</option>').join('')+'<option value="__new">+ New agent…</option></select>'+
+    (CHAT_DOC?'<button type="button" class="chchip" id="chDocBtn" title="Answering from this document. Click to stop.">'+esc(CHAT_DOC.name.slice(0,30))+' ×</button>':'')+
+    '<button type="button" class="chchip'+(ctxOn?'':' off')+'" id="chCtxBtn" title="'+(ctxOn?AI_NAME()+' sees this. Click to hide it.':'Hidden from '+AI_NAME()+'. Click to share it.')+'"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>'+esc(n.label)+'</button>';
   $('#chCtxBtn').onclick=()=>{ctxOn=!ctxOn;paintCtx();};
+  const sel=$('#chAgent'); sel.onchange=()=>{if(sel.value==='__new'){sel.value=ag.id;(AUTH_ON&&LIB.docs===null?libLoad():Promise.resolve()).then(()=>agentEditor(null,()=>{paintCtx();paintAgents();}));return;}setAgent(sel.value);paintCtx();toast('Agent: '+curAgent().name);};
+  const db=$('#chDocBtn'); if(db)db.onclick=()=>{CHAT_DOC=null;$('#chIn').placeholder='Ask, or type / for commands';paintCtx();};
 }
 
 /* ---------- slash commands ---------- */
@@ -245,18 +250,20 @@ async function sendChatMsg(){
   paintChatLog(); chatBusy=new AbortController(); $('#chSend').textContent='Stop';
   const paint=()=>{const last=$('#chLog').lastElementChild;if(last){last.outerHTML='<div class="cm assistant">'+am.tools.map(toolRow).join('')+(am.text?mdRich(am.text):'<span class="small chthink">Thinking…</span>')+'</div>';$('#chLog').scrollTop=$('#chLog').scrollHeight;}};
   try{
-    if(PROV()==='chatgpt')await chatViaChatGPT(content,am,paint); else await chatViaPlan(content,am,paint);
+    const ag=await agentContext(prompt); CUR.agent=curAgent().id;
+    if(PROV()==='chatgpt')await chatViaChatGPT(content,am,paint,ag); else await chatViaPlan(content,am,paint,ag);
   }catch(e){am.error=e&&e.aborted?'':String(e&&e.message||'Something went wrong.');if(!am.text&&!am.tools.length&&!e.aborted)inp.value=raw;}
   am.pending=false; chatBusy=null; $('#chSend').textContent='Send';
   const i=CHATS.findIndex(c=>c.id===CUR.id); if(i>=0)CHATS.splice(i,1); CHATS.unshift(CUR); chatsSave();
   paintChatLog(); paintCtx();
 }
 /* claude.ai-plan route: sample() runs the tool rounds and calls these page functions */
-async function chatViaPlan(content,am,paint){
+async function chatViaPlan(content,am,paint,ag){
+  ag=ag||{sys:'',sources:''}; if(ag.sources)content=ag.sources+'\n\n'+content;
   if(!SAMPLE)throw new Error('Claude is not available in this view.');
   let canTools=false; try{const lim=await SAMPLE.limits();canTools=!!lim.tools;}catch(e){}
   const turns=CUR.view.slice(0,-2).filter(m=>m.text).slice(-16).map(m=>({role:m.role,content:m.role==='user'?m.text:m.text.slice(0,4000)}));
-  const input=[{role:'user',content:'Instructions for this conversation: '+CHAT_SYS()+(canTools?'':'\n(Tools are not available in this view: answer from the context given.)')}].concat(turns).concat([{role:'user',content}]);
+  const input=[{role:'user',content:'Instructions for this conversation: '+CHAT_SYS()+ag.sys+(canTools?'':'\n(Tools are not available in this view: answer from the context given.)')}].concat(turns).concat([{role:'user',content}]);
   const opts={signal:chatBusy.signal,onText:({text})=>{am.text=text;paint();}};
   if(canTools)opts.tools=CHAT_TOOLS.map(t=>({name:t.name,description:t.description,inputSchema:t.schema,
     execute:async(inp)=>{const tr={id:'t'+Math.random().toString(36).slice(2,8),name:t.name};am.tools.push(tr);paint();try{const r=await runTool(t.name,inp,tr);paint();return r;}catch(e){paint();throw e;}}}));
@@ -266,10 +273,11 @@ async function chatViaPlan(content,am,paint){
 }
 /* ChatGPT route (website): answers stream from aws/chatgpt.js on the person's ChatGPT plan. It has no page tools,
    so it gets a snapshot of the student's status with each message instead. */
-async function chatViaChatGPT(content,am,paint){
+async function chatViaChatGPT(content,am,paint,ag){
+  ag=ag||{sys:'',sources:''}; if(ag.sources)content=ag.sources+'\n\n'+content;
   const snap={};
   ['study_status','weak_spots'].forEach(n=>{try{snap[n]=CHAT_TOOLS.find(t=>t.name===n).run({},{});}catch(e){}});
-  const sys=AI_SYS+'\n\nYou are the study tutor inside the student’s ARE Study System web page, answering on their own ChatGPT plan. You can’t change their data from here: their answers in this chat are not recorded, so for scored practice send them to the Practice, Flashcards or Mistakes pages. You may still quiz them with your own questions, one at a time, waiting for their answer before explaining. Keep replies short unless asked for more. Today is '+ds(new Date())+'.\n\nThe student’s current status (JSON): '+JSON.stringify(snap).slice(0,6000);
+  const sys=AI_SYS+'\n\nYou are the study tutor inside the student’s ARE Study System web page, answering on their own ChatGPT plan. You can’t change their data from here: their answers in this chat are not recorded, so for scored practice send them to the Practice, Flashcards or Mistakes pages. You may still quiz them with your own questions, one at a time, waiting for their answer before explaining. Keep replies short unless asked for more. Today is '+ds(new Date())+'.\n\nThe student’s current status (JSON): '+JSON.stringify(snap).slice(0,6000)+ag.sys;
   const turns=CUR.view.slice(0,-2).filter(m=>m.text).slice(-16).map(m=>({role:m.role,content:m.role==='user'?m.text:m.text.slice(0,4000)}));
   try{am.text=await cgStream({system:sys,messages:turns.concat([{role:'user',content}]),signal:chatBusy.signal,onText:t=>{am.text=t;paint();}});}
   catch(e){if(e&&e.text)am.text=e.text;throw e;}

@@ -809,13 +809,14 @@ function initMine(opts){
   const packs=Object.entries((S.custom&&S.custom.packs)||{}).sort((a,b)=>b[1].at-a[1].at);
   const tools='<div class="mtools"><button type="button" class="btn pri" data-mact="import">Import a study pack</button><button type="button" class="btn" data-mact="prompt">Get the AI prompt</button><button type="button" class="btn" data-mact="export">Export my material</button>'+(AI_POSSIBLE?'<button type="button" class="btn" data-mact="gen">Generate with '+AI_NAME()+'</button>':'')+'<span class="small">One file with many points, cards and questions. Ask any AI to turn your notes into one.</span></div>';
   const packRows=packs.map(([id,p])=>'<div class="mrow"><span class="obj">pack</span><span class="mt">'+esc(p.title)+' <span style="color:var(--ink-3)">· '+[['points','point'],['cards','card'],['questions','question']].map(([k,w])=>{const n=p.counts[k]||0;return n+' '+w+(n===1?'':'s');}).join(', ')+' · '+esc(fmtDate(new Date(p.at)))+'</span></span><span class="mb"><button type="button" class="lnk" data-mpack="'+esc(id)+'" style="color:var(--flag)">Remove pack</button></span></div>').join('');
-  $('#mineBody').innerHTML=tools+
+  $('#mineBody').innerHTML=tools+'<div id="agBox"></div><div id="libBox"></div>'+
     sec('My study points',pts.length,pts.map(p=>pointHtml(p,true)).join(''),addBtn('newpt','+ New point'))+
     sec('My flashcards',myCards.length,myCards.map(c=>row(c.o,strip(c.q)+' · '+c.d,'<button type="button" class="lnk" data-medit="cards:'+esc(c.id)+'">Edit</button>')).join(''),addBtn('newcard','+ New card'))+
     sec('My practice questions',myItems.length,myItems.map(q=>row(q.o,strip(q.s),'<button type="button" class="lnk" data-medit="items:'+esc(q.id)+'">Edit</button>')).join(''),addBtn('newq','+ New question'))+
     sec('Shared items I changed',edited.length,edited.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-medit="'+x.kind+':'+esc(x.id)+'">Edit</button><button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Restore original</button>')).join(''))+
     (packs.length?sec('Imported packs',packs.length,packRows):'')+
     sec('Shared items I hid',hidden.length,hidden.map(x=>row(x.tag,x.label,'<button type="button" class="lnk" data-mrestore="'+x.kind+':'+esc(x.id)+'">Show again</button>')).join(''));
+  paintAgents(); paintLibrary();
   const again=()=>go('mine',{keepScroll:true});
   $('#mineBody').onclick=e=>{
     const t=e.target.closest('[data-mact],[data-medit],[data-mrestore],[data-pedit],[data-mpack],[data-mpackyes]'); if(!t)return;
