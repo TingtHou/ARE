@@ -14,13 +14,17 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 - `develop` gets every change first and deploys to the preview site.
 - `main` is the live site. It only moves when an admin clicks **Publish** on the preview site.
 
-## Connect your Claude
+## Connect your AI (ChatGPT or Claude)
 
-Everyone uses **their own Claude plan**. There are no API keys, and nothing is billed to the site.
+Everyone uses **their own plan**, ChatGPT or Claude. There are no API keys, and nothing is billed to the site.
+
+**ChatGPT on the website:** click **Connect AI**, then **Continue with ChatGPT**, and run the one-line sign-in command it shows on your own computer (Node.js 18+). After that, explanations, generated material, your plan and the chat panel answer right on the website on your ChatGPT plan (Plus or Pro). Details and the steps behind it: [aws/SETUP.md](aws/SETUP.md), "ChatGPT on the website".
+
+**Claude:**
 
 **On the website**, Claude reaches each person's study account through the **ARE Study System connector**:
 
-1. Click **Connect Claude** in the top bar. It shows the connector URL and the steps.
+1. Click **Connect AI** in the top bar. It shows the connector URL and the steps.
 2. In Claude, go to **Settings → Connectors → Add custom connector**. Name it *ARE Study System* and paste the URL. It ends in `/mcp` and is the `ConnectorUrl` output of the `are-accounts` stack.
 3. Click **Connect** and sign in with the same email and password as the website.
 

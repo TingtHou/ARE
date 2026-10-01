@@ -8,7 +8,7 @@ const chatKey=()=>LSC+':'+PROF.cur;
 let CHATS=[], CUR=null, chatBusy=null, ctxOn=true;
 function chatsLoad(){try{CHATS=JSON.parse(localStorage.getItem(chatKey())||'[]');}catch(e){CHATS=[];}if(!Array.isArray(CHATS))CHATS=[];}
 function chatsSave(){try{localStorage.setItem(chatKey(),JSON.stringify(CHATS.slice(0,30)));}catch(e){try{CHATS=CHATS.slice(0,10);localStorage.setItem(chatKey(),JSON.stringify(CHATS));}catch(_){}}}
-function newChat(){CUR={id:'h'+Date.now().toString(36),title:'',at:Date.now(),route:AI_MODE,view:[],api:[]};return CUR;}
+function newChat(){CUR={id:'h'+Date.now().toString(36),title:'',at:Date.now(),route:PROV(),view:[]};return CUR;}
 
 /* ---------- panel markup (built once) ---------- */
 function buildChat(){
@@ -51,10 +51,10 @@ function buildChat(){
 }
 function openChat(){
   if(!needAi(openChat))return;
-  buildChat(); chatsLoad(); if(!CUR)CUR=CHATS[0]&&CHATS[0].route===AI_MODE?CHATS[0]:newChat();
+  buildChat(); chatsLoad(); if(!CUR||CUR.route!==PROV())CUR=CHATS[0]&&CHATS[0].route===PROV()?CHATS[0]:newChat();
   const p=$('#chat'); p.hidden=false; document.body.classList.add('chaton');
   document.documentElement.style.setProperty('--chw',p.getBoundingClientRect().width+'px');
-  $('#chRoute').textContent='your claude.ai plan';
+  $('#chRoute').textContent=PROV()==='chatgpt'?'Using ChatGPT plan'+((CG.st.models||[]).find(m=>m.slug===CG.st.model)?' · '+(CG.st.models||[]).find(m=>m.slug===CG.st.model).name:''):'your claude.ai plan'; $('#chat b').textContent=AI_NAME();
   paintChatLog(); paintCtx(); setTimeout(()=>$('#chIn').focus(),30);
 }
 function closeChat(){const p=$('#chat');if(p)p.hidden=true;document.body.classList.remove('chaton');}
@@ -205,7 +205,7 @@ function toolRow(tr){
 function paintChatLog(){
   const log=$('#chLog'); if(!log)return;
   if(!CUR||!CUR.view.length){
-    log.innerHTML='<div class="chempty"><b>Study with Claude</b><p>Claude can see this page, quiz you from your question bank, run your flashcards, and add material to your collection.</p><div class="chstarters">'+
+    log.innerHTML='<div class="chempty"><b>Study with '+AI_NAME()+'</b><p>'+(PROV()==='chatgpt'?'ChatGPT sees this page and your study status, explains, quizzes you and plans with you. Answers you give in the chat aren’t recorded; use Practice and Flashcards for that.':'Claude can see this page, quiz you from your question bank, run your flashcards, and add material to your collection.')+'</p><div class="chstarters">'+
       ['What should I study today?','/quiz PA 4.1','/cards','Explain what is on my screen'].map(s=>'<button type="button" data-starter="'+esc(s)+'">'+esc(s)+'</button>').join('')+'</div></div>';return;}
   log.innerHTML=CUR.view.map(m=>m.role==='user'?'<div class="cm user">'+esc(m.text).replace(/\n/g,'<br>')+'</div>':
     '<div class="cm assistant">'+(m.tools||[]).map(toolRow).join('')+(m.text?mdRich(m.text):(m.pending?'<span class="small chthink">Thinking…</span>':''))+(m.error?'<div class="aerr" style="margin:6px 0 0">'+esc(m.error)+'</div>':'')+'</div>').join('');
@@ -213,7 +213,7 @@ function paintChatLog(){
 }
 function paintHistory(){
   const h=$('#chHistList'); chatsLoad();
-  h.innerHTML='<div class="chhh"><b>Past chats</b><span class="small">saved on this device</span></div>'+(CHATS.length?CHATS.map(c=>'<div class="chhrow'+(CUR&&c.id===CUR.id?' on':'')+'"><button type="button" class="chho" data-open="'+c.id+'">'+esc(c.title||'Untitled')+'<span>'+esc(fmtDate(new Date(c.at),{day:'numeric',month:'short'}))+(c.route!==AI_MODE?' · other route':'')+'</span></button><button type="button" class="chib" data-del="'+c.id+'" aria-label="Delete chat"><svg viewBox="0 0 24 24"><path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"/></svg></button></div>').join(''):'<p class="small" style="padding:8px 12px">No saved chats yet.</p>');
+  h.innerHTML='<div class="chhh"><b>Past chats</b><span class="small">saved on this device</span></div>'+(CHATS.length?CHATS.map(c=>'<div class="chhrow'+(CUR&&c.id===CUR.id?' on':'')+'"><button type="button" class="chho" data-open="'+c.id+'">'+esc(c.title||'Untitled')+'<span>'+esc(fmtDate(new Date(c.at),{day:'numeric',month:'short'}))+(c.route!==PROV()?' · '+(c.route==='chatgpt'?'ChatGPT':'Claude'):'')+'</span></button><button type="button" class="chib" data-del="'+c.id+'" aria-label="Delete chat"><svg viewBox="0 0 24 24"><path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"/></svg></button></div>').join(''):'<p class="small" style="padding:8px 12px">No saved chats yet.</p>');
   h.onclick=e=>{const o=e.target.closest('[data-open]'),d=e.target.closest('[data-del]');
     if(o&&!chatBusy){CUR=CHATS.find(c=>c.id===o.dataset.open)||CUR;h.hidden=true;paintChatLog();}
     if(d){CHATS=CHATS.filter(c=>c.id!==d.dataset.del);chatsSave();if(CUR&&CUR.id===d.dataset.del)newChat();paintHistory();paintChatLog();}};
@@ -245,7 +245,7 @@ async function sendChatMsg(){
   paintChatLog(); chatBusy=new AbortController(); $('#chSend').textContent='Stop';
   const paint=()=>{const last=$('#chLog').lastElementChild;if(last){last.outerHTML='<div class="cm assistant">'+am.tools.map(toolRow).join('')+(am.text?mdRich(am.text):'<span class="small chthink">Thinking…</span>')+'</div>';$('#chLog').scrollTop=$('#chLog').scrollHeight;}};
   try{
-    await chatViaPlan(content,am,paint);
+    if(PROV()==='chatgpt')await chatViaChatGPT(content,am,paint); else await chatViaPlan(content,am,paint);
   }catch(e){am.error=e&&e.aborted?'':String(e&&e.message||'Something went wrong.');if(!am.text&&!am.tools.length&&!e.aborted)inp.value=raw;}
   am.pending=false; chatBusy=null; $('#chSend').textContent='Send';
   const i=CHATS.findIndex(c=>c.id===CUR.id); if(i>=0)CHATS.splice(i,1); CHATS.unshift(CUR); chatsSave();
@@ -263,4 +263,14 @@ async function chatViaPlan(content,am,paint){
   else opts.cache=false;
   try{const r=await SAMPLE(input,opts);am.text=r.text;}
   catch(e){if(e&&e.text)am.text=e.text;throw sampleErr(e);}
+}
+/* ChatGPT route (website): answers stream from aws/chatgpt.js on the person's ChatGPT plan. It has no page tools,
+   so it gets a snapshot of the student's status with each message instead. */
+async function chatViaChatGPT(content,am,paint){
+  const snap={};
+  ['study_status','weak_spots'].forEach(n=>{try{snap[n]=CHAT_TOOLS.find(t=>t.name===n).run({},{});}catch(e){}});
+  const sys=AI_SYS+'\n\nYou are the study tutor inside the student’s ARE Study System web page, answering on their own ChatGPT plan. You can’t change their data from here: their answers in this chat are not recorded, so for scored practice send them to the Practice, Flashcards or Mistakes pages. You may still quiz them with your own questions, one at a time, waiting for their answer before explaining. Keep replies short unless asked for more. Today is '+ds(new Date())+'.\n\nThe student’s current status (JSON): '+JSON.stringify(snap).slice(0,6000);
+  const turns=CUR.view.slice(0,-2).filter(m=>m.text).slice(-16).map(m=>({role:m.role,content:m.role==='user'?m.text:m.text.slice(0,4000)}));
+  try{am.text=await cgStream({system:sys,messages:turns.concat([{role:'user',content}]),signal:chatBusy.signal,onText:t=>{am.text=t;paint();}});}
+  catch(e){if(e&&e.text)am.text=e.text;throw e;}
 }

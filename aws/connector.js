@@ -479,6 +479,7 @@ exports.handler = async (ev) => {
       return tokErr(400, 'unsupported_grant_type', 'Use authorization_code or refresh_token.');
     }
     if (path === '/' && method === 'GET') return jres(200, { name: 'ARE Study System connector', mcp: base + '/mcp' });
+    if (path === '/chatgpt-config' && method === 'GET') return jres(200, { url: String(process.env.CHATGPT_URL || '').replace(/\/+$/, '') });   // where the website finds the ChatGPT service
     return jres(404, { error: 'not found' });
   } catch (e) {
     console.error(e);

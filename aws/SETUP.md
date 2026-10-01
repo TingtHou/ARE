@@ -108,3 +108,43 @@ The connector lets each person use **their own Claude plan** with their study ac
 - **Disconnect:** remove the connector in Claude's settings.
 - **The website and Claude at the same time:** both save to the same account. The website picks up Claude's changes when you switch back to its tab. If you answer questions on the website while Claude is also saving, the last save wins, so finish one before starting the other.
 - **Material changes** on the live site reach the connector within 10 minutes.
+
+# ChatGPT on the website
+
+Each person can connect **their own ChatGPT plan**. Explanations, generated cards and questions, the personal plan and the chat panel then answer right on the website, streamed as they're written. There's no API key and no OpenAI billing: requests use the person's ChatGPT plan. That plan must be ChatGPT **Plus or Pro**.
+
+This follows OpenAI's [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source), self-hosted route:
+1. Each person signs in to ChatGPT once **on their own computer**, with `tools/chatgpt-signin.mjs`. OpenAI only returns this sign-in to `127.0.0.1`.
+2. The script checks the result and hands the credentials to the `are-study-system-chatgpt` function.
+3. The function keeps them encrypted, refreshes them, and sends questions to OpenAI's Responses API with that person's own access token.
+
+OpenAI describes this route for open-source apps and personal projects. Paid or remotely hosted apps for the public need their waitlist. This site is open source (MIT) and used by two people, each with their own plan.
+
+## 1. Update the stack
+Same as for the connector: in **CloudFormation**, open **are-accounts**, then **Update**, then **Replace existing template**, and upload `aws/are-accounts.yaml` from `develop`. Keep the parameters as they are. The new **ChatGPTKeyParameter** has the right default. Tick the IAM box and submit.
+
+It adds:
+- the **are-study-system-chatgpt** function with its own **function URL**. A function URL is needed because the HTTP API can't stream. The website finds the URL by itself, so there's nothing to paste.
+- an encryption key for stored ChatGPT credentials. The function creates it on first use as the SecureString parameter `/are-study-system/chatgpt-token-key`. Deleting that parameter disconnects everyone.
+
+## 2. Connect (each person, once)
+1. On the website, click **Connect AI** in the top bar, then **Continue with ChatGPT**.
+2. On a Mac or Windows computer with [Node.js 18 or newer](https://nodejs.org/en/download):
+   - download `chatgpt-signin.mjs` from the link in the dialog
+   - copy the command shown, open a terminal in the download folder, and run it. It looks like `node chatgpt-signin.mjs https://….lambda-url.us-east-1.on.aws <code>`. The code works once, for 15 minutes.
+3. Sign in to ChatGPT in the browser that opens, and allow using your ChatGPT plan.
+4. The website notices within a few seconds and shows **Using ChatGPT plan**. After that it works on every device you sign in on, including your phone.
+
+## What you need to configure
+Nothing beyond the stack update:
+- **OpenAI client ID:** none to request. Each sign-in registers its own client (`dynamic_agent_client`), and the backend stores the issued ID.
+- **Permissions:** the script asks for `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct`, for the resource `https://api.openai.com/v1`. Questions are only sent if `chatgpt.tokens.use.direct` was granted.
+- **Callback URL:** `http://127.0.0.1:<random port>/callback` on your own computer, opened by the script. There's no callback on Amplify.
+- **Secrets:** none to create. The encryption key creates itself.
+
+## Good to know
+- **Expiry:** access tokens last 1 hour and refresh on their own. The refresh token lasts 30 days from its last use, so if nobody uses ChatGPT on the site for 30 days, connect again.
+- **Usage limits:** reaching your plan's limit for this app shows a message with **Manage usage**, which opens https://chatgpt.com/settings/usage. You can also set a weekly cap for the app there.
+- **Revoked access:** if you remove the app in ChatGPT, or the sign-in stops working, the site shows **Connect again**. **Disconnect** on the website revokes the sign-in and deletes the stored credentials.
+- **Separate accounts:** each study account has its own ChatGPT connection, and one ChatGPT account can only be connected to one study account.
+- **Recording answers:** the chat panel's ChatGPT answers see your study status, but can't record answers or change your material. Use Practice and Flashcards for that, or the Claude connector.
