@@ -370,7 +370,7 @@ function initToday(){
     const its=ITEMS.filter(i=>i.d===e.d); let done=0,ok=0; its.forEach(it=>{const a=S.ans[it.id];if(a){done++;if(a.ok)ok++;}});
     const cardPct=cc.n?cc.strong/cc.n:0, qPct=its.length?ok/its.length:0;
     const ready=Math.round((cardPct*0.5+qPct*0.5)*100);
-    return '<div class="exam'+(next===e?' next':'')+(pass?' done':'')+'">'+
+    return '<div class="exam dvcard'+(next===e?' next':'')+(pass?' done':'')+'" data-div="'+e.d+'" title="Everything for '+e.d+'">'+
       '<div class="top"><button type="button" class="pill pillbtn '+e.d.toLowerCase()+'" data-div="'+e.d+'" title="Everything for '+e.d+'">'+e.d+'</button><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
       '<div class="days">'+(pass?'Passed':past?'Sat':days)+(!pass&&!past?'<small>'+(days===1?'day':'days')+'</small>':'')+'</div>'+
       '<div class="dt"><a href="#div-'+e.d.toLowerCase()+'" class="dvlink" data-div="'+e.d+'">'+e.n+'</a> · '+e.items+' items</div>'+
@@ -419,14 +419,14 @@ function initToday(){
   // cards
   const all=cardCounts(CARDS);
   $('#tdCardStats').innerHTML=stat(all.due,'due now')+stat(all.nw,'new')+stat(all.strong,'strong');
-  $('#tdCardBars').innerHTML=DIVS.map(d=>{const cc=cardCounts(CARDS.filter(c=>cdiv(c)===d));const g=cc.n?cc.strong/cc.n*100:0,s=cc.n?cc.learn/cc.n*100:0;return '<div class="divbar"><button type="button" class="pill pillbtn '+d.toLowerCase()+'" data-div="'+d+'" title="Everything for '+d+'">'+d+'</button><div class="meter2"><i class="g" style="width:'+g+'%"></i><i class="s" style="width:'+s+'%"></i></div><span class="n">'+cc.strong+'/'+cc.n+'</span></div>';}).join('');
+  $('#tdCardBars').innerHTML=DIVS.map(d=>{const cc=cardCounts(CARDS.filter(c=>cdiv(c)===d));const g=cc.n?cc.strong/cc.n*100:0,s=cc.n?cc.learn/cc.n*100:0;return '<div class="divbar dvcard" data-div="'+d+'" title="Everything for '+d+'"><button type="button" class="pill pillbtn '+d.toLowerCase()+'" data-div="'+d+'" title="Everything for '+d+'">'+d+'</button><div class="meter2"><i class="g" style="width:'+g+'%"></i><i class="s" style="width:'+s+'%"></i></div><span class="n">'+cc.strong+'/'+cc.n+'</span></div>';}).join('');
   $('#tdReview').textContent=all.due?'Review '+all.due+' due card'+(all.due===1?'':'s'):(all.nw?'Learn new cards':'Review cards');
   $('#tdReview').onclick=()=>{S.deck='';S.fcMode='due';save();go('cards');};
 
   // quiz
   let qd=0,qo=0; ITEMS.forEach(it=>{const a=S.ans[it.id];if(a){qd++;if(a.ok)qo++;}});
   $('#tdQuizStats').innerHTML=stat(qd+'/'+ITEMS.length,'answered')+stat(qo,'correct')+stat(qd?Math.round(qo/qd*100)+'%':'—','accuracy');
-  $('#tdQuizBars').innerHTML=DIVS.map(d=>{const its=ITEMS.filter(x=>x.d===d),L=its.length||1;let ok=0,no=0;its.forEach(x=>{const a=S.ans[x.id];if(a){if(a.ok)ok++;else no++;}});return '<div class="divbar"><button type="button" class="pill pillbtn '+d.toLowerCase()+'" data-div="'+d+'" title="Everything for '+d+'">'+d+'</button><div class="meter2"><i class="g" style="width:'+(ok/L*100)+'%"></i><i class="a" style="width:'+(no/L*100)+'%"></i></div><span class="n">'+ok+'/'+its.length+'</span></div>';}).join('');
+  $('#tdQuizBars').innerHTML=DIVS.map(d=>{const its=ITEMS.filter(x=>x.d===d),L=its.length||1;let ok=0,no=0;its.forEach(x=>{const a=S.ans[x.id];if(a){if(a.ok)ok++;else no++;}});return '<div class="divbar dvcard" data-div="'+d+'" title="Everything for '+d+'"><button type="button" class="pill pillbtn '+d.toLowerCase()+'" data-div="'+d+'" title="Everything for '+d+'">'+d+'</button><div class="meter2"><i class="g" style="width:'+(ok/L*100)+'%"></i><i class="a" style="width:'+(no/L*100)+'%"></i></div><span class="n">'+ok+'/'+its.length+'</span></div>';}).join('');
   const mdue=mistDue().length, mopen=Object.values(S.mist).filter(m=>!m.fixed).length;
   $('#tdMissed').disabled=!mopen;
   $('#tdMissed').textContent=mdue?'Revisit '+mdue+' due mistake'+(mdue===1?'':'s'):mopen?mopen+' mistake'+(mopen===1?'':'s')+' scheduled':'No mistakes logged';
@@ -547,7 +547,13 @@ function initDivision(d){
   };
 }
 /* any PA / PPD / PDD label marked data-div opens its division page */
-document.addEventListener('click',e=>{const b=e.target.closest('[data-div]');if(b&&DIVS.includes(b.dataset.div)){e.preventDefault();go('div-'+b.dataset.div.toLowerCase());}});
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-div]'); if(!b||!DIVS.includes(b.dataset.div))return;
+  // a card's own controls (exam date, "I passed") keep working, and so does a date being edited
+  const ctl=e.target.closest('button,input,label,a,select,textarea'); if(ctl&&ctl!==b&&!ctl.hasAttribute('data-div'))return;
+  if(b.querySelector('.exin'))return;
+  e.preventDefault(); go('div-'+b.dataset.div.toLowerCase());
+});
 
 /* ================= NOTES ================= */
 function initNotes(id){
