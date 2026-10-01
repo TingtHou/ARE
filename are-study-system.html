@@ -387,6 +387,13 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .ahint{font-family:var(--sans);font-size:12px;color:var(--ink-3);margin:-4px 0 12px}
 .abtn{width:100%;min-height:46px;margin-top:4px;font-size:15px}
 .connsteps{padding-left:20px;margin:10px 0}.connsteps li{margin:0 0 8px}
+.pillbtn{border:0;cursor:pointer;line-height:inherit}.pillbtn:hover{filter:brightness(1.12);box-shadow:0 0 0 2px var(--accent-soft)}.pillbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dvlink{color:inherit;text-decoration:none}.dvlink:hover{text-decoration:underline}
+.dvacts{flex-wrap:wrap;gap:8px;margin:14px 0}.dvstats{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:0 0 18px}
+.dvsec{font-family:var(--sans);font-size:13px;letter-spacing:.02em;color:var(--ink-2);margin:18px 0 6px}
+.dvrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--rule)}.dvrow .obj{flex:0 0 auto;min-width:64px}.dvrow .dvt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.dvrow .mb{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.dvrow.weak{border-left:3px solid var(--flag);background:var(--flag-soft)}.dvrow.now{border-left:3px solid var(--accent);background:var(--accent-soft)}
+@media (max-width:600px){.dvrow{flex-wrap:wrap}.dvrow .mb{width:100%;justify-content:flex-start}}
 .libdrop{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1.5px dashed var(--rule);border-radius:10px;padding:14px;margin:8px 0 12px}.libdrop.on{border-color:var(--accent);background:var(--accent-soft)}
 .agdocs{margin:2px 0 4px 22px;max-height:160px;overflow:auto}
 .chagent{max-width:46%;font:12px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--ink)}
@@ -761,7 +768,10 @@ const PAGES=[
  {id:'ppd',g:'Notes',n:'Planning & Design',i:'PPD'},
  {id:'pdd',g:'Notes',n:'Development & Docs',i:'PDD'},
  {id:'numbers',g:'Notes',n:'Numbers',i:'#'},
- {id:'mine',g:'Notes',n:'My material',i:'+'}
+ {id:'mine',g:'Notes',n:'My material',i:'+'},
+ {id:'div-pa',g:'',n:'Programming & Analysis · all',i:'PA',hidden:true},
+ {id:'div-ppd',g:'',n:'Planning & Design · all',i:'PPD',hidden:true},
+ {id:'div-pdd',g:'',n:'Development & Docs · all',i:'PDD',hidden:true}
 ];
 const NOTE_PAGES=['overview','objectives','pa','ppd','pdd','numbers'];
 const DIVS=['PA','PPD','PDD'];
@@ -1045,7 +1055,7 @@ function openProfiles(msg){
 /* ---------- nav / routing ---------- */
 function buildNav(){
   let g=null,h='';
-  PAGES.forEach(p=>{if(p.g!==g){g=p.g;h+='<div class="navgrp">'+g+'</div>';}h+='<button type="button" data-p="'+p.id+'"><i>'+p.i+'</i><span>'+p.n+'</span></button>';});
+  PAGES.forEach(p=>{if(p.hidden)return;if(p.g!==g){g=p.g;h+='<div class="navgrp">'+g+'</div>';}h+='<button type="button" data-p="'+p.id+'"><i>'+p.i+'</i><span>'+p.n+'</span></button>';});
   nav.innerHTML=h;
   nav.addEventListener('click',e=>{const b=e.target.closest('button[data-p]');if(b)go(b.dataset.p);});
 }
@@ -1066,6 +1076,7 @@ function go(id,opts){
   else if(id==='mistakes')initMistakes();
   else if(id==='plan')initPlan();
   else if(id==='mine')initMine(opts);
+  else if(id.startsWith('div-'))initDivision(id.slice(4).toUpperCase());
   else initNotes(id);
 }
 function route(keep){go((location.hash||'').slice(1)||'today',{keepScroll:keep});}
@@ -1111,9 +1122,9 @@ function initToday(){
     const cardPct=cc.n?cc.strong/cc.n:0, qPct=its.length?ok/its.length:0;
     const ready=Math.round((cardPct*0.5+qPct*0.5)*100);
     return '<div class="exam'+(next===e?' next':'')+(pass?' done':'')+'">'+
-      '<div class="top"><span class="pill '+e.d.toLowerCase()+'">'+e.d+'</span><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
+      '<div class="top"><button type="button" class="pill pillbtn '+e.d.toLowerCase()+'" data-div="'+e.d+'" title="Everything for '+e.d+'">'+e.d+'</button><span class="exd" data-exd="'+e.d+'"><button type="button" class="exdate" data-edit="'+e.d+'" title="Change the '+e.d+' exam date">'+e.label+'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button></span></div>'+
       '<div class="days">'+(pass?'Passed':past?'Sat':days)+(!pass&&!past?'<small>'+(days===1?'day':'days')+'</small>':'')+'</div>'+
-      '<div class="dt">'+e.n+' · '+e.items+' items</div>'+
+      '<div class="dt"><a href="#div-'+e.d.toLowerCase()+'" class="dvlink" data-div="'+e.d+'">'+e.n+'</a> · '+e.items+' items</div>'+
       '<div class="meter2" title="Readiness"><i class="g" style="width:'+ready+'%"></i></div>'+
       '<div class="rd"><span>Readiness '+ready+'%</span><span>'+cc.strong+'/'+cc.n+' cards · '+ok+'/'+its.length+' items</span></div>'+
       '<label class="pass"><input type="checkbox" data-pass="'+e.d+'"'+(pass?' checked':'')+'> I passed this division</label></div>';
@@ -1159,14 +1170,14 @@ function initToday(){
   // cards
   const all=cardCounts(CARDS);
   $('#tdCardStats').innerHTML=stat(all.due,'due now')+stat(all.nw,'new')+stat(all.strong,'strong');
-  $('#tdCardBars').innerHTML=DIVS.map(d=>{const cc=cardCounts(CARDS.filter(c=>cdiv(c)===d));const g=cc.n?cc.strong/cc.n*100:0,s=cc.n?cc.learn/cc.n*100:0;return '<div class="divbar"><span class="pill '+d.toLowerCase()+'">'+d+'</span><div class="meter2"><i class="g" style="width:'+g+'%"></i><i class="s" style="width:'+s+'%"></i></div><span class="n">'+cc.strong+'/'+cc.n+'</span></div>';}).join('');
+  $('#tdCardBars').innerHTML=DIVS.map(d=>{const cc=cardCounts(CARDS.filter(c=>cdiv(c)===d));const g=cc.n?cc.strong/cc.n*100:0,s=cc.n?cc.learn/cc.n*100:0;return '<div class="divbar"><button type="button" class="pill pillbtn '+d.toLowerCase()+'" data-div="'+d+'" title="Everything for '+d+'">'+d+'</button><div class="meter2"><i class="g" style="width:'+g+'%"></i><i class="s" style="width:'+s+'%"></i></div><span class="n">'+cc.strong+'/'+cc.n+'</span></div>';}).join('');
   $('#tdReview').textContent=all.due?'Review '+all.due+' due card'+(all.due===1?'':'s'):(all.nw?'Learn new cards':'Review cards');
   $('#tdReview').onclick=()=>{S.deck='';S.fcMode='due';save();go('cards');};
 
   // quiz
   let qd=0,qo=0; ITEMS.forEach(it=>{const a=S.ans[it.id];if(a){qd++;if(a.ok)qo++;}});
   $('#tdQuizStats').innerHTML=stat(qd+'/'+ITEMS.length,'answered')+stat(qo,'correct')+stat(qd?Math.round(qo/qd*100)+'%':'—','accuracy');
-  $('#tdQuizBars').innerHTML=DIVS.map(d=>{const its=ITEMS.filter(x=>x.d===d),L=its.length||1;let ok=0,no=0;its.forEach(x=>{const a=S.ans[x.id];if(a){if(a.ok)ok++;else no++;}});return '<div class="divbar"><span class="pill '+d.toLowerCase()+'">'+d+'</span><div class="meter2"><i class="g" style="width:'+(ok/L*100)+'%"></i><i class="a" style="width:'+(no/L*100)+'%"></i></div><span class="n">'+ok+'/'+its.length+'</span></div>';}).join('');
+  $('#tdQuizBars').innerHTML=DIVS.map(d=>{const its=ITEMS.filter(x=>x.d===d),L=its.length||1;let ok=0,no=0;its.forEach(x=>{const a=S.ans[x.id];if(a){if(a.ok)ok++;else no++;}});return '<div class="divbar"><button type="button" class="pill pillbtn '+d.toLowerCase()+'" data-div="'+d+'" title="Everything for '+d+'">'+d+'</button><div class="meter2"><i class="g" style="width:'+(ok/L*100)+'%"></i><i class="a" style="width:'+(no/L*100)+'%"></i></div><span class="n">'+ok+'/'+its.length+'</span></div>';}).join('');
   const mdue=mistDue().length, mopen=Object.values(S.mist).filter(m=>!m.fixed).length;
   $('#tdMissed').disabled=!mopen;
   $('#tdMissed').textContent=mdue?'Revisit '+mdue+' due mistake'+(mdue===1?'':'s'):mopen?mopen+' mistake'+(mopen===1?'':'s')+' scheduled':'No mistakes logged';
@@ -1228,6 +1239,66 @@ function objTitle(o){
     $$('h2.s,tr',tpl.content).forEach(el=>{if(el.tagName==='H2'){const p=$('.pill',el);div=p?p.textContent.trim():null;return;}const td=$$('td',el);if(td.length===3&&div)OBJT[div+' '+td[0].textContent.trim()]=td[1].textContent.replace(/(Narrowed|Clarified) Apr 2026/,'').trim();});}
   return OBJT[o]||(o==='—'?'Source corrections':o);
 }
+
+/* ================= DIVISION: everything for PA, PPD or PDD on one page (#div-pa …) ================= */
+/* sections and objectives of a division, read from the objective map */
+function divOutline(d){
+  const tpl=$('#tpl-objectives'), out=[]; let on=false, sec=null;
+  if(!tpl)return out;
+  $$('h2.s,tr',tpl.content).forEach(el=>{
+    if(el.tagName==='H2'){const p=$('.pill',el);on=!!p&&p.textContent.trim()===d;sec=null;return;}
+    if(!on)return;
+    const td=$$('td',el);
+    if(td.length===1){sec={title:td[0].textContent.replace(/\s+/g,' ').trim(),objs:[]};out.push(sec);return;}
+    if(td.length===3){if(!sec){sec={title:'',objs:[]};out.push(sec);}sec.objs.push(d+' '+td[0].textContent.trim());}
+  });
+  return out;
+}
+function initDivision(d){
+  const t=midnight(new Date()), e=myExams().find(x=>x.d===d)||{n:d,items:'',date:t};
+  const cards=CARDS.filter(c=>cdiv(c)===d), cc=cardCounts(cards), its=ITEMS.filter(i=>i.d===d);
+  let ans=0,ok=0; its.forEach(i=>{const a=S.ans[i.id];if(a){ans++;if(a.ok)ok++;}});
+  const open=Object.keys(S.mist).filter(i=>{const it=ITEM(i);return it&&it.d===d&&!S.mist[i].fixed;}), due=mistDue().filter(i=>ITEM(i).d===d);
+  const ready=Math.round(((cc.n?cc.strong/cc.n:0)*0.5+(its.length?ok/its.length:0)*0.5)*100);
+  const days=Math.round((midnight(e.date)-t)/DAY), pass=!!S.passed[d];
+  const pts=myPoints().filter(p=>p.div===d), myC=cards.filter(c=>c.mine).length, myQ=its.filter(q=>q.mine).length;
+  const wkRe=new RegExp('\\b'+d+'\\b'), cw=curWeek(), weeks=PLAN.filter(w=>wkRe.test([w.g,w.exam||''].concat(w.t).join(' ')));
+  const row=o=>{
+    const oc=cards.filter(c=>c.o===o), oi=its.filter(i=>i.o===o), occ=cardCounts(oc);
+    let a=0,k=0,miss=0; oi.forEach(i=>{const s=S.ans[i.id];if(s){a++;if(s.ok)k++;else miss++;}});
+    const shaky=oc.filter(c=>{const s=cstate(c);return s&&s.b<=1;}).length, np=pts.filter(p=>p.obj===o.split(' ')[1]).length;
+    const flag=miss||shaky?' weak':'';
+    return '<div class="dvrow'+flag+'"><span class="obj">'+esc(o)+'</span><span class="dvt"><b>'+esc(objTitle(o))+'</b><span class="small">'+
+      [oc.length?occ.strong+'/'+oc.length+' cards strong':'no cards',oi.length?a+'/'+oi.length+' questions answered'+(a?' · '+k+' right':''):'no questions',miss?miss+' missed':'',shaky?shaky+' shaky':'',np?np+' of my points':''].filter(Boolean).join(' · ')+'</span></span>'+
+      '<span class="mb"><button type="button" class="lnk" data-onotes="'+esc(o)+'">Notes</button>'+(oc.length?'<button type="button" class="lnk" data-ocards="'+esc(o)+'">Cards</button>':'')+(oi.length?'<button type="button" class="lnk" data-oq="'+esc(o)+'">Questions</button>':'')+'</span></div>';
+  };
+  const outline=divOutline(d), listed=new Set(outline.flatMap(s=>s.objs));
+  const extra=[...new Set(cards.map(c=>c.o).concat(its.map(i=>i.o)))].filter(o=>odiv(o)===d&&!listed.has(o)).sort();
+  view.innerHTML='<div class="eyebrow">Division · '+esc(e.n)+'</div><h1 class="t"><span class="pill '+d.toLowerCase()+'" style="font-size:.55em;vertical-align:middle">'+d+'</span> '+esc(e.n)+'</h1>'+
+    '<p class="lede">'+(pass?'Passed.':days<0?'The exam date has passed. Mark it passed on Today, or set a new date.':days+' day'+(days===1?'':'s')+' to the exam on '+esc(fmtDate(e.date,{weekday:'long',day:'numeric',month:'long'}))+'.')+(e.items?' '+e.items+' items.':'')+' Readiness '+ready+'%.</p>'+
+    '<div class="row dvacts"><button type="button" class="btn pri" data-dact="cards">'+(cc.due?'Review '+cc.due+' due '+d+' card'+(cc.due===1?'':'s'):'Study '+d+' flashcards')+'</button><button type="button" class="btn" data-dact="practice">Practice '+d+' questions</button><button type="button" class="btn" data-dact="timed">Timed set of 10</button><button type="button" class="btn" data-dact="mistakes"'+(open.length?'':' disabled')+'>'+(due.length?due.length+' due mistake'+(due.length===1?'':'s'):open.length?open.length+' mistake'+(open.length===1?'':'s')+' scheduled':'No mistakes')+'</button><button type="button" class="btn" data-dact="notes">Read the '+d+' notes</button></div>'+
+    '<div class="stats dvstats">'+stat(cc.due,'cards due')+stat(cc.nw,'new cards')+stat(cc.strong+'/'+cc.n,'cards strong')+stat(ans+'/'+its.length,'questions answered')+stat(ans?Math.round(ok/ans*100)+'%':'—','accuracy')+stat(open.length,'open mistakes')+'</div>'+
+    '<h2 class="s">Objectives</h2><p class="small">Each objective with your cards and questions. Weak ones (missed questions or shaky cards) are marked.</p>'+
+    outline.map(s=>(s.title?'<h3 class="dvsec">'+esc(s.title)+'</h3>':'')+s.objs.map(row).join('')).join('')+(extra.length?'<h3 class="dvsec">Other</h3>'+extra.map(row).join(''):'')+
+    (weeks.length?'<h2 class="s">In the study plan</h2>'+weeks.map(w=>'<div class="dvrow'+(w.w===cw?' now':'')+'"><span class="obj">Wk '+w.w+'</span><span class="dvt"><b>'+esc(w.d)+(w.w===cw?' · this week':'')+'</b><span class="small">'+esc(w.g)+(w.exam?' · '+esc(w.exam):'')+'</span></span><span class="mb"><button type="button" class="lnk" data-dact="plan">Plan</button></span></div>').join(''):'')+
+    '<h2 class="s">My material</h2><p class="small">'+pts.length+' point'+(pts.length===1?'':'s')+', '+myC+' card'+(myC===1?'':'s')+' and '+myQ+' question'+(myQ===1?'':'s')+' of your own for '+d+'. <a href="#mine">Open My material</a></p>';
+  view.onclick=ev=>{
+    const a=ev.target.closest('[data-dact]');
+    if(a){const k=a.dataset.dact;
+      if(k==='cards'){S.deck='div:'+d;S.fcMode=cc.due?'due':'all';save();go('cards');}
+      if(k==='practice'){S.qdiv=d;S.qmode='all';save();go('practice');}
+      if(k==='timed')go('practice',{timed:{div:d,n:10}});
+      if(k==='mistakes'){if(due.length){S.qdiv=d;S.qmode='due';save();go('practice');}else go('mistakes');}
+      if(k==='notes')go(d.toLowerCase());
+      if(k==='plan')go('plan');
+      return;}
+    const n=ev.target.closest('[data-onotes]'); if(n){gotoObj(n.dataset.onotes);return;}
+    const c=ev.target.closest('[data-ocards]'); if(c){go('cards',{obj:c.dataset.ocards});return;}
+    const q=ev.target.closest('[data-oq]'); if(q)go('practice',{obj:q.dataset.oq});
+  };
+}
+/* any PA / PPD / PDD label marked data-div opens its division page */
+document.addEventListener('click',e=>{const b=e.target.closest('[data-div]');if(b&&DIVS.includes(b.dataset.div)){e.preventDefault();go('div-'+b.dataset.div.toLowerCase());}});
 
 /* ================= NOTES ================= */
 function initNotes(id){
