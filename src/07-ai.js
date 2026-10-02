@@ -373,7 +373,7 @@ function openGenerate(preset,done){
     const fmt=$('#genFmt',m).value, ex=styleExamples(obj,preset.doc?null:obj?obj.split(' ')[0]:null).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
     const prompt='Write '+want+' for the ARE study pack'+(obj?' on objective '+obj+' ('+objTitle(obj)+')':'')+(topic?', topic: '+topic:'')+'.\n'+
-      'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:'PA, PPD or PDD as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+
+      'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:DIVS.join(', ')+' as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+
       'Cards: a prompt and a complete answer (full lists where the exam tests lists).\n'+FORMAT_RULES+'\n'+(fmt==='mix'?'Use more than one format: write each key concept in at least two different formats where it fits (for example a multiple-choice scenario and a matching or fill-in-the-number question on the same rule). Use "num" only for real calculations.':'Write every question in the "'+fmt+'" format.')+'\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+'\nDeck: "'+(obj||'My')+' · '+AI_NAME()+'"; title: a short name for this batch.\n'+
       'Do not repeat the example questions or any question I already have.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them'+(preset.doc?' (from my document "'+preset.doc.name+'"; put the page in the explanation where it helps)':'')+':\n'+notes.slice(0,24000):'');
     $('#genActs',m).innerHTML='<p class="small" style="margin:0">'+AI_NAME()+' is writing… this can take up to a minute.</p><button type="button" class="btn" data-a="close">Cancel</button>';
@@ -419,7 +419,7 @@ async function generateCoverage(divs,per,kind,fmt,topic,m,close,done){
     catch(e){if(e&&e.aborted){if(!pack.questions.length&&!pack.cards.length)return;break;}failed.push(d+' · '+sec.title.replace(/\s+—.*$/,'')+': '+(e.message||e));}
   }
   // which objectives ended up without a question (or card)
-  const have=new Set(pack.questions.concat(pack.cards).map(x=>String(x.division).toUpperCase()+' '+((String(x.objective).match(/\d+\.\d+/)||[''])[0])));
+  const have=new Set(pack.questions.concat(pack.cards).map(x=>(canonDiv(x.division)||x.division)+' '+((String(x.objective).match(/\d+\.\d+/)||[''])[0])));
   const missing=jobs.flatMap(j=>j.sec.objs).filter(o=>!have.has(o));
   if(!pack.questions.length&&!pack.cards.length){msg.innerHTML='<div class="aerr">Nothing came back. '+esc(failed[0]||'Try again.')+'</div>';acts.innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}
   close(); openImportWith(JSON.stringify(pack),done);

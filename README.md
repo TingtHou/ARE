@@ -13,6 +13,9 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 
 - `develop` gets every change first and deploys to the preview site.
 - `main` is the live site. It only moves when an admin clicks **Publish** on the preview site.
+## Divisions
+
+The site covers all five ARE 5.0 divisions: **PA**, **PPD**, **PDD**, **PcM** (Practice Management) and **PjM** (Project Management). PcM and PjM have their own notes pages plus a **Contracts (AIA)** page, objectives in the Objective map, flashcard decks, exam dates on Today (change them there) and plan weeks 15–22. PcM has 56 practice questions; PjM questions are made with **Generate → All of PjM** or written as you go in Endless practice. To re-import: `node tools/import-deck.js <deck data folder>` for the deck, and `node tools/import-quizzes.js <file> --divisions PCM --keep PA,PPD,PDD` for PcM questions.
 
 ## Endless practice
 

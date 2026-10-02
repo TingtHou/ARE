@@ -150,15 +150,15 @@ const CHAT_TOOLS=[
    note:i=>'“'+String(i.query||'')+'”'},
   {name:'get_notes',label:'Read the notes',description:'The full notes text for one objective (e.g. "PPD 2.2"), plus the student’s own points on it.',
    schema:{type:'object',properties:{objective:{type:'string'}},required:['objective'],additionalProperties:false},
-   run:i=>{const o=String(i.objective||'').trim().toUpperCase().replace(/\s+/,' '), d=odiv(o); if(!d)throw new Error('Use an objective like "PA 4.1".');
+   run:i=>{const o=normObj(i.objective), d=odiv(o); if(!d)throw new Error('Use an objective like "PA 4.1".');
      const tpl=$('#tpl-'+d.toLowerCase()); if(!tpl)throw new Error('Notes not loaded.');
      const out=[]; $$('h3',tpl.content).forEach(h=>{if(![...h.querySelectorAll('.obj')].some(c=>c.textContent.trim()===o))return;let t=h.textContent+'\n',n=h.nextElementSibling;while(n&&!/^H[1-3]$/.test(n.tagName)){t+=n.textContent.replace(/\s+/g,' ').trim()+'\n';n=n.nextElementSibling;}out.push(t);});
      const pts=myPoints().filter(p=>p.div===d&&p.obj===o.split(' ')[1]).map(p=>strip(md2html(p.text)));
      return {objective:o,title:objTitle(o),notes:out.join('\n').slice(0,8000)||'(no notes section for this objective)',my_points:pts};},
    note:i=>String(i.objective||'')},
   {name:'practice_questions',label:'Picked practice questions',description:'Practice questions for quizzing, with the correct answers so you can grade. Never show the correct letters or explanation until the student has answered.',
-   schema:{type:'object',properties:{objective:{type:'string',description:'e.g. "PA 4.1", or "" for any'},division:{type:'string',description:'PA, PPD, PDD or ""'},count:{type:'integer'},which:{type:'string',enum:['unanswered','missed','due_mistakes','any']}},required:['count'],additionalProperties:false},
-   run:i=>{let l=ITEMS.slice();const o=String(i.objective||'').trim().toUpperCase(),d=String(i.division||'').toUpperCase();
+   schema:{type:'object',properties:{objective:{type:'string',description:'e.g. "PA 4.1", or "" for any'},division:{type:'string',description:'PA, PPD, PDD, PcM, PjM or ""'},count:{type:'integer'},which:{type:'string',enum:['unanswered','missed','due_mistakes','any']}},required:['count'],additionalProperties:false},
+   run:i=>{let l=ITEMS.slice();const o=normObj(i.objective),d=canonDiv(i.division)||'';
      if(o)l=l.filter(q=>q.o===o); if(d)l=l.filter(q=>q.d===d);
      if(i.which==='unanswered')l=l.filter(q=>!S.ans[q.id]); if(i.which==='missed')l=l.filter(q=>S.ans[q.id]&&!S.ans[q.id].ok);
      if(i.which==='due_mistakes'){const due=mistDue();l=l.filter(q=>due.includes(q.id));}
@@ -172,7 +172,7 @@ const CHAT_TOOLS=[
    note:i=>String(i.question_id||'')+' → '+(i.choices||[]).join(',')},
   {name:'due_flashcards',label:'Picked flashcards',description:'Flashcards that are due now (weakest first), then new ones. Show the question, let the student answer, then reveal.',
    schema:{type:'object',properties:{count:{type:'integer'},objective:{type:'string'}},required:['count'],additionalProperties:false},
-   run:i=>{const now=Date.now();let p=CARDS.slice();const o=String(i.objective||'').trim().toUpperCase();if(o)p=p.filter(c=>c.o===o);
+   run:i=>{const now=Date.now();let p=CARDS.slice();const o=normObj(i.objective);if(o)p=p.filter(c=>c.o===o);
      const due=p.filter(c=>S.cards[c.id]&&S.cards[c.id].due<=now).sort((a,b)=>S.cards[a.id].b-S.cards[b.id].b), nw=shuffle(p.filter(c=>!S.cards[c.id]));
      return due.concat(nw).slice(0,Math.max(1,Math.min(15,+i.count||5))).map(c=>({card_id:c.id,deck:c.d,objective:c.o,question:strip(c.q),answer:strip(c.a)}));}},
   {name:'rate_flashcard',label:'Rated a flashcard',description:'Save the student’s rating for a flashcard: again (did not know it), shaky (partly), good (knew it). Schedules its next review.',
@@ -187,7 +187,7 @@ const CHAT_TOOLS=[
    note:i=>(i.cards||[]).length+' card'+((i.cards||[]).length===1?'':'s')},
   {name:'add_practice_question',label:'Added a practice question',undoable:'items',description:'Add one practice question to the student’s own material. mc has exactly one correct option; cata has two or more.',
    schema:{type:'object',properties:{objective:{type:'string'},type:{type:'string',enum:['mc','cata']},question:{type:'string'},options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'},description:'Letters of the correct options'},explanation:{type:'string'}},required:['objective','type','question','options','correct','explanation'],additionalProperties:false},
-   run:(i,ctx)=>{const o=String(i.objective||'').toUpperCase(),d=odiv(o),ob=(o.match(/\d+\.\d+/)||[''])[0];if(!d)throw new Error('objective must start with PA, PPD or PDD.');
+   run:(i,ctx)=>{const o=normObj(i.objective),d=odiv(o),ob=(o.match(/\d+\.\d+/)||[''])[0];if(!d)throw new Error('objective must start with PA, PPD or PDD.');
      const opts=(i.options||[]).map(x=>String(x).replace(/^[A-Z][.)]\s*/,'').trim()).filter(Boolean),c=[...new Set((i.correct||[]).map(x=>String(x).trim().toUpperCase().charCodeAt(0)-65).filter(k=>k>=0&&k<opts.length))];
      if(opts.length<2||!c.length)throw new Error('Need 2+ options and at least one correct letter.');
      const t=i.type==='cata'||c.length>1?'cata':'mc',id=newUid();S.custom=S.custom||{};S.custom.items=S.custom.items||{};
@@ -204,7 +204,7 @@ const CHAT_TOOLS=[
    note:i=>String(i.task_id||'')+(i.done?' ✓':' ✗')},
   {name:'open_page',label:'Opened a page',description:'Show the student a page of the site: today, cards, practice, mistakes, plan, overview, objectives, pa, ppd, pdd, numbers or mine. With an objective, scrolls to its notes.',
    schema:{type:'object',properties:{page:{type:'string'},objective:{type:'string'}},required:['page'],additionalProperties:false},
-   run:i=>{const o=String(i.objective||'').trim().toUpperCase();if(o&&odiv(o)){gotoObj(o);return {opened:o};}const p=String(i.page||'').toLowerCase();if(!PAGES.some(x=>x.id===p))throw new Error('Unknown page.');go(p);return {opened:p};},
+   run:i=>{const o=normObj(i.objective);if(o&&odiv(o)){gotoObj(o);return {opened:o};}const p=String(i.page||'').toLowerCase();if(!PAGES.some(x=>x.id===p))throw new Error('Unknown page.');go(p);return {opened:p};},
    note:i=>String(i.objective||i.page||'')}
 ];
 const CHAT_SYS=()=>AI_SYS+'\n\nYou are the study tutor inside the student’s ARE Study System web page. You can use tools to read their progress and the site’s material, quiz them, record answers, rate flashcards, add material to their own collection, tick plan tasks and open pages. Prefer the site’s own material (search_material, get_notes) for facts. When quizzing, ask one question at a time, show lettered options, wait for the student’s reply, then call record_answer before explaining. Never reveal an answer before the student responds. Keep replies short unless asked for more. Today is '+ds(new Date())+'.';

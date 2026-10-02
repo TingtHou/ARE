@@ -17,15 +17,24 @@ const PAGES=[
  {id:'pa',g:'Notes',n:'Programming & Analysis',i:'PA'},
  {id:'ppd',g:'Notes',n:'Planning & Design',i:'PPD'},
  {id:'pdd',g:'Notes',n:'Development & Docs',i:'PDD'},
+ {id:'pcm',g:'Notes',n:'Practice Management',i:'PcM'},
+ {id:'pjm',g:'Notes',n:'Project Management',i:'PjM'},
+ {id:'contracts',g:'Notes',n:'Contracts (AIA)',i:'§'},
  {id:'numbers',g:'Notes',n:'Numbers',i:'#'},
  {id:'mine',g:'Notes',n:'My material',i:'+'},
  {id:'aihelp',g:'Help',n:'AI setup',i:'AI'},
  {id:'div-pa',g:'',n:'Programming & Analysis · all',i:'PA',hidden:true},
  {id:'div-ppd',g:'',n:'Planning & Design · all',i:'PPD',hidden:true},
- {id:'div-pdd',g:'',n:'Development & Docs · all',i:'PDD',hidden:true}
+ {id:'div-pdd',g:'',n:'Development & Docs · all',i:'PDD',hidden:true},
+ {id:'div-pcm',g:'',n:'Practice Management · all',i:'PcM',hidden:true},
+ {id:'div-pjm',g:'',n:'Project Management · all',i:'PjM',hidden:true}
 ];
-const NOTE_PAGES=['overview','objectives','pa','ppd','pdd','numbers'];
-const DIVS=['PA','PPD','PDD'];
+const NOTE_PAGES=['overview','objectives','pa','ppd','pdd','pcm','pjm','contracts','numbers'];
+const DIVS=['PA','PPD','PDD','PcM','PjM'];   // NCARB's spelling; anything typed is matched without regard to case
+const DIVU={}; DIVS.forEach(d=>{DIVU[d.toUpperCase()]=d;});
+const canonDiv=s=>DIVU[String(s||'').trim().toUpperCase()]||null;
+/* "pcm 1.4", "PCM 1.4" → "PcM 1.4" */
+const normObj=s=>{const x=String(s||'').trim().replace(/\s+/g,' '),m=x.match(/^([A-Za-z]+)\s*(.*)$/);if(!m)return x;const d=canonDiv(m[1]);return d?(m[2]?d+' '+m[2]:d):x;};
 
 /* ---------- material, loaded from material/*.js ---------- */
 const A=window.ARE||{};
@@ -56,7 +65,7 @@ const MATERR=(()=>{
   (A.questions||[]).forEach((q,i)=>{const t=q&&(QTYPES.includes(q.t)?q.t:'mc');if(!q||q.id==null||!q.s||!qValid(Object.assign({},q,{t})))out.push('questions.js: question #'+(i+1)+(q&&q.id!=null?' ('+q.id+')':'')+' is missing '+(t==='num'?'s or a numeric ans':t==='match'?'s, items, opts or c (one right choice per item)':'s, opts or c, or a correct answer is outside its options (count from 0)')+' and was skipped');});
   BASE_ITEMS.forEach(q=>{
     if(q.t==='mc'&&q.c.length!==1)out.push('questions.js: '+q.id+' is multiple choice but lists '+q.c.length+' correct answers — use t:\'cata\' or one answer');
-    if(!DIVS.includes(q.d))out.push('questions.js: '+q.id+' has division \''+q.d+'\' — use PA, PPD or PDD');});
+    if(!DIVS.includes(q.d))out.push('questions.js: '+q.id+' has division \''+q.d+'\' — use '+DIVS.join(', '));});
   EXAMS.forEach(e=>{if(isNaN(e.date))out.push('plan.js: exam '+e.d+' has an unreadable date — use YYYY-MM-DD');});
   BASE_PLAN.forEach(w=>{if(isNaN(pdate(w.from))||isNaN(pdate(w.to)))out.push('plan.js: week '+w.w+' needs from/to dates as YYYY-MM-DD');});
   return out;
@@ -71,7 +80,7 @@ const pad=n=>String(n).padStart(2,'0');
 const ds=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const midnight=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
 const ckey=c=>c.id;
-const odiv=o=>{const p=(o||'').split(' ')[0];return DIVS.includes(p)?p:null;};
+const odiv=o=>canonDiv(String(o||'').trim().split(/\s+/)[0]);
 const cdiv=c=>odiv(c.o)||(c.d.split(' ')[0]);
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 /* DECKS is rebuilt with the material in rebuildMaterial() */
@@ -351,7 +360,7 @@ function go(id,opts){
   else if(id==='mine')initMine(opts);
   else if(id==='aihelp')initAiHelp();
   else if(id==='drill')initDrill(opts);
-  else if(id.startsWith('div-'))initDivision(id.slice(4).toUpperCase());
+  else if(id.startsWith('div-'))initDivision(canonDiv(id.slice(4))||'PA');
   else initNotes(id);
 }
 function route(keep){go((location.hash||'').slice(1)||'today',{keepScroll:keep});}
@@ -515,7 +524,7 @@ function objTitle(o){
   return OBJT[o]||(o==='—'?'Source corrections':o);
 }
 
-/* ================= DIVISION: everything for PA, PPD or PDD on one page (#div-pa …) ================= */
+/* ================= DIVISION: everything for one division on one page (#div-pa … #div-pjm) ================= */
 /* sections and objectives of a division, read from the objective map */
 function divOutline(d){
   const tpl=$('#tpl-objectives'), out=[]; let on=false, sec=null;
@@ -596,8 +605,8 @@ function initNotes(id){
   // make objective chips clickable to drill that objective
   $$('h3 .obj',view).forEach(ch=>{const o=ch.textContent.trim();if(CARDS.some(c=>c.o===o)||ITEMS.some(i=>i.o===o)){ch.classList.add('go');ch.title='Drill '+o;ch.addEventListener('click',()=>openObjDrill(o));}});
   // your own study points: under the matching objective heading, the rest in a box at the top
-  const D=id.toUpperCase();
-  if(DIVS.includes(D)){
+  const D=canonDiv(id);
+  if(D){
     const pts=myPoints().filter(p=>p.div===D), loose=[];
     pts.forEach(p=>{
       const chip=p.obj&&$$('h3 .obj',view).find(c=>c.textContent.trim()===D+' '+p.obj);
@@ -611,7 +620,7 @@ function initNotes(id){
       const ed=e.target.closest('[data-pedit]'); if(ed){const p=myPoints().find(x=>x.id===ed.dataset.pedit);if(p)pointEditor(p,null,()=>go(id,{keepScroll:true}));}
     };
     // an "add a point" shortcut on each objective heading
-    $$('h3 .obj',view).forEach(ch=>{const m=ch.textContent.trim().match(/^(PA|PPD|PDD) (\d+\.\d+)$/);if(!m)return;const h=ch.closest('h3');if(h.querySelector('.addpt'))return;
+    $$('h3 .obj',view).forEach(ch=>{const m=ch.textContent.trim().match(/^(PA|PPD|PDD|PcM|PjM) (\d+\.\d+)$/);if(!m)return;const h=ch.closest('h3');if(h.querySelector('.addpt'))return;
       h.insertAdjacentHTML('beforeend','<button type="button" class="addpt" title="Add my point to '+m[0]+'" aria-label="Add my point to '+m[0]+'">+ point</button>');
       h.lastElementChild.onclick=()=>pointEditor(null,{div:m[1],obj:m[2]},()=>go(id,{keepScroll:true}));});
   }
@@ -794,7 +803,7 @@ async function doSignIn(){
 const divSel=(id,val,withOther)=>'<select class="sel" id="'+id+'">'+DIVS.concat(withOther?['—']:[]).map(d=>'<option value="'+d+'"'+(d===val?' selected':'')+'>'+(d==='—'?'No division':d)+'</option>').join('')+'</select>';
 const MDHINT='<p class="ahint">Blank line = new paragraph · start lines with <code>- </code> for bullets or <code>1. </code> for steps · <code>**bold**</code></p>';
 function splitObj(o){const d=odiv(o);return {div:d||'—',obj:d?(String(o).split(' ')[1]||''):''};}
-function joinObj(div,obj){obj=String(obj||'').trim().replace(/^(PA|PPD|PDD)\s*/i,'');return div==='—'?'—':(obj?div+' '+obj:div);}
+function joinObj(div,obj){obj=String(obj||'').trim().replace(/^(PA|PPD|PDD|PcM|PjM)\s*/i,'');return div==='—'?'—':(obj?div+' '+obj:div);}
 const oneLine=t=>inlineMd(String(t||'').trim()).replace(/\n/g,'<br>');
 function edConfirm(m,msg,yesLabel,onYes){const box=$('#edActs',m);box.innerHTML='<div class="confirm" style="margin:0">'+msg+'<div class="row" style="margin-top:8px"><button type="button" class="btn sm pri" data-a="yes">'+yesLabel+'</button><button type="button" class="btn sm" data-a="back">Cancel</button></div></div>';box._yes=onYes;}
 function edErr(m,t){const e=$('#edErr',m);e.textContent=t;e.hidden=false;}
@@ -885,7 +894,7 @@ function pointEditor(p,preset,done){
   },
   (form,m,close)=>{
     const text=$('#edP',m).value.trim(); if(!text){edErr(m,'Write your point.');return;}
-    const d=$('#edDiv',m).value, o=String($('#edObj',m).value||'').trim().replace(/^(PA|PPD|PDD)\s*/i,'');
+    const d=$('#edDiv',m).value, o=String($('#edObj',m).value||'').trim().replace(/^(PA|PPD|PDD|PcM|PjM)\s*/i,'');
     customSet('points',p?p.id:newUid(),{div:d,obj:d==='GEN'?'':o,text:text.slice(0,4000),at:p?p.at:Date.now(),edited:Date.now()});
     close();toast(isNew?'Point saved':'Point updated');if(done)done();
   });
@@ -951,7 +960,7 @@ function aiPackPrompt(){
   return 'Turn my study notes into an ARE study pack for the ARE Study System.\n\n'+
   'Reply with ONE JSON object and nothing else, in exactly this shape:\n\n'+JSON.stringify(PACK_EXAMPLE,null,2)+'\n\n'+
   'Rules:\n'+
-  '- "division" is "PA", "PPD" or "PDD" ("General" is allowed for points).\n'+
+  '- "division" is one of '+DIVS.map(d=>'"'+d+'"').join(', ')+' ("General" is allowed for points).\n'+
   '- "objective" is the NCARB objective number such as "2.2", or "" if none fits.\n'+
   '- "points": short study notes worth rereading. "text" may use "- " bullets, "1. " steps, **bold**, and blank lines between paragraphs.\n'+
   '- "cards": flashcards. "question" is a prompt; "answer" is what to recall, complete lists where the exam tests lists.\n'+
@@ -989,13 +998,13 @@ function packOf(q){
 }
 function packQuestion(q,label,problems){
   const arr=v=>Array.isArray(v)?v:[], str=v=>typeof v==='string'?v.trim():(v==null?'':String(v).trim());
-  const divOf=(d,o)=>{const u=String(d||'').toUpperCase().trim();if(DIVS.includes(u))return u;const m=String(o||'').toUpperCase().match(/^(PA|PPD|PDD)\b/);return m?m[1]:'';};
+  const divOf=(d,o)=>canonDiv(d)||odiv(o)||'';
   const objOf=o=>{const m=String(o||'').match(/(\d+\.\d+)/);return m?m[1]:'';};
   const s=str(q.question||q.stem||q.s), div=divOf(q.division||q.div,q.objective), obj=objOf(q.objective||q.obj), e=str(q.explanation||q.why||q.e), title=str(q.title);
   label=label+(s?' (“'+s.slice(0,40)+'…”)':'');
   const bad=m=>{problems.push(label+' '+m+' and was skipped.');return null;};
   if(!s)return bad('has no question text');
-  if(!DIVS.includes(div))return bad('needs a division (PA, PPD or PDD)');
+  if(!DIVS.includes(div))return bad('needs a division ('+DIVS.join(', ')+')');
   const pick=(list,w)=>{if(typeof w==='number')return w;const x=str(w);let k=list.findIndex(o=>o.toLowerCase()===x.toLowerCase());
     if(k<0&&/^[A-Za-z]$/.test(x))k=x.toUpperCase().charCodeAt(0)-65; if(k<0&&/^\d+$/.test(x))k=+x;
     if(k<0&&x.length>3)k=list.findIndex(o=>o.toLowerCase().startsWith(x.toLowerCase().slice(0,25))||x.toLowerCase().startsWith(o.toLowerCase().slice(0,25)));
@@ -1031,7 +1040,7 @@ function parsePack(text){
   let j; try{j=JSON.parse(t.slice(a,b+1));}catch(e){throw new Error('This is not valid JSON ('+e.message+'). If an AI wrote it, ask it to "reply with only the JSON object".');}
   const P={title:String(j.title||'').trim().slice(0,80)||'Study pack',points:[],cards:[],questions:[],problems:[]};
   const arr=v=>Array.isArray(v)?v:[];
-  const divOf=(d,o)=>{const u=String(d||'').toUpperCase().trim();if(DIVS.includes(u))return u;const m=String(o||'').toUpperCase().match(/^(PA|PPD|PDD)\b/);return m?m[1]:(u==='GENERAL'||u==='GEN'?'GEN':'');};
+  const divOf=(d,o)=>{const c=canonDiv(d)||odiv(o);if(c)return c;const u=String(d||'').toUpperCase().trim();return u==='GENERAL'||u==='GEN'?'GEN':'';};
   const objOf=o=>{const m=String(o||'').match(/(\d+\.\d+)/);return m?m[1]:'';};
   const str=v=>typeof v==='string'?v.trim():(v==null?'':String(v).trim());
   arr(j.points||j.notes).forEach((p,i)=>{
@@ -1314,7 +1323,7 @@ function practiceList(opts){
   const obj=opts.obj||null;
   area.innerHTML='<div class="qzctl">'+
     (obj?'<div class="row"><span class="lbl">Showing objective</span><span class="obj">'+esc(obj)+'</span><button type="button" class="lnk" id="qzClear">Show all questions</button></div>':
-    '<div class="row"><span class="lbl" style="min-width:64px">Division</span><div class="seg" id="qzDiv">'+['','PA','PPD','PDD'].map(d=>'<button type="button" data-d="'+d+'">'+(d||'All')+'</button>').join('')+'</div></div>'+
+    '<div class="row"><span class="lbl" style="min-width:64px">Division</span><div class="seg" id="qzDiv">'+[''].concat(DIVS).map(d=>'<button type="button" data-d="'+d+'">'+(d||'All')+'</button>').join('')+'</div></div>'+
     '<div class="row"><span class="lbl" style="min-width:64px">Show</span><div class="seg" id="qzMode">'+[['all','All'],['new','Unanswered'],['due','Mistakes due ('+mistDue().length+')'],['missed','Missed']].map(m=>'<button type="button" data-m="'+m[0]+'">'+m[1]+'</button>').join('')+'</div></div>')+
     '<div class="row"><span class="lbl" style="min-width:64px">Timed</span><select class="sel" id="qzN" aria-label="Number of items"><option value="10">10 items · 24 min</option><option value="20">20 items · 48 min</option><option value="0">Every item in this division</option></select><button type="button" class="btn pri" id="qzStart">Start timed set</button></div>'+
     '<div class="row" style="justify-content:space-between"><div class="progress" id="qzprog" style="margin:0"></div><button type="button" class="btn sm" id="qzNew">+ New question</button></div></div><div id="quiz"></div>';

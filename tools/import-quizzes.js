@@ -10,14 +10,15 @@ const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2), opt = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const SRC = args.find(a => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--divisions' && args[args.indexOf(a) - 1] !== '--keep');
 if (!SRC) { console.error('Usage: node tools/import-quizzes.js <quizzes.txt> [--divisions PPD,PDD] [--keep PA] [--dry]'); process.exit(1); }
-const DIVS = (opt('--divisions') || 'PPD,PDD').split(','), KEEP = (opt('--keep') || 'PA').split(','), DRY = args.includes('--dry');
+const CANON = { PA: 'PA', PPD: 'PPD', PDD: 'PDD', PCM: 'PcM', PJM: 'PjM' }, canon = s => CANON[String(s).toUpperCase()] || s;
+const DIVS = (opt('--divisions') || 'PPD,PDD').split(',').map(canon), KEEP = (opt('--keep') || 'PA').split(',').map(canon), DRY = args.includes('--dry');
 
 /* ---------- the objective map: sections and objectives per division ---------- */
 const objHtml = fs.readFileSync(path.join(ROOT, 'material/notes/objectives.html'), 'utf8');
 const strip = h => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim();
 const MAP = {}; let div = null, sec = null;
-for (const m of objHtml.matchAll(/<h2 class="s"><span class="pill [a-z]+">([A-Z]+)<\/span>|<tr>([\s\S]*?)<\/tr>/g)) {
-  if (m[1]) { div = m[1]; MAP[div] = []; continue; }
+for (const m of objHtml.matchAll(/<h2 class="s"><span class="pill [a-z]+">([A-Za-z]+)<\/span>|<tr>([\s\S]*?)<\/tr>/g)) {
+  if (m[1]) { div = canon(m[1]); MAP[div] = []; continue; }
   if (!div) continue;
   const td = [...m[2].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(x => strip(x[1]));
   if (td.length === 1) { const t = td[0].match(/^(\d+)\s*·\s*(.+?)\s+—/); if (t) { sec = { n: +t[1], name: t[2], objs: [] }; MAP[div].push(sec); } }
@@ -58,58 +59,79 @@ function html(lines) {
 const raw = fs.readFileSync(SRC, 'utf8').replace(/\r/g, '');
 const all = raw.split('\n');
 const qs = [], warn = [];
-let curDiv = null;
+let curDiv = null, curCat = '';
 for (let i = 0; i < all.length; i++) {
   const l = all[i];
-  const quiz = l.match(/^(PA|PPD|PDD|PCM)[ -]*Quiz\b/); if (quiz) { curDiv = quiz[1]; continue; }
-  const h = l.match(/^QUESTION (\d+) \(([^)]*)\)(?:\s+—\s+(.*))?$/); if (!h) continue;
+  const quiz = l.match(/^(PA|PPD|PDD|PCM|PJM)\b[^\n]*\bQuiz\b/i); if (quiz) { curDiv = canon(quiz[1]); curCat = ''; continue; }
+  const cat = l.match(/^CATEGORY:\s*(.+)$/); if (cat) { curCat = cat[1].trim(); continue; }
+  const hm = l.match(/^QUESTION (\d+)\b(.*)$/); if (!hm) continue;
+  const rest = hm[2], kind = (rest.match(/\(([^)]*)\)/) || [])[1] || '', tt = rest.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').split(/\s+—\s+/).map(s => s.trim()).filter(s => s && !/^YOUR ANSWER/i.test(s))[0] || '';
+  const h = [l, hm[1], kind, tt];
   let j = i + 1; const blk = [];
-  while (j < all.length && !/^(={10,}|-{20,}|END OF |QUESTION \d+ \()/.test(all[j])) blk.push(all[j++]);
-  if (curDiv && DIVS.includes(curDiv)) qs.push({ div: curDiv, n: +h[1], kind: h[2], title: h[3] || '', blk, line: i + 1 });
+  while (j < all.length && !/^(={10,}|-{20,}|END OF |QUESTION \d+\b)/.test(all[j])) { if (!/^(-{3,}|─+.*)$/.test(all[j].trim())) blk.push(all[j]); j++; }
+  if (curDiv && DIVS.includes(curDiv)) qs.push({ div: curDiv, n: +h[1], kind: h[2], title: h[3] || '', blk, line: i + 1, cat: curCat });
 }
 function parseQ(q) {
   const b = q.blk.slice();
-  const catI = b.findIndex(x => /^Category:/.test(x)); const category = catI >= 0 ? b.splice(catI, 1)[0].replace(/^Category:\s*/, '') : '';
+  if (b.some(x => /text truncated|not fully visible/i.test(x))) throw new Error('skipped: the source text is incomplete');
+  const catI = b.findIndex(x => /^Category:/.test(x)); let category = catI >= 0 ? b.splice(catI, 1)[0].replace(/^Category:\s*/, '') : '';
+  if (!category && MAP[q.div] && MAP[q.div].some(s => norm(s.name) === norm(q.kind))) category = q.kind;
+  if (!category) category = q.cat || '';
   const refI = b.findIndex(x => /^Reference:/.test(x)); const ref = refI >= 0 ? b.splice(refI).join(' ').replace(/^Reference:\s*/, '').trim() : '';
-  const caI = b.findIndex(x => /^CORRECT ANSWERS?:/.test(x));
-  if (caI < 0) throw new Error('no CORRECT ANSWER line');
+  b.forEach((x, k) => { const m = x.match(/^\s*✓\s*Correct Answers?:\s*(.*)$/i); if (m) b[k] = 'CORRECT ANSWER: ' + m[1]; });
+  let caI = b.findIndex(x => /^CORRECT ANSWERS?:/.test(x));
+  if (caI < 0) { const e = b.findIndex(x => /^(Explanation|EXPLANATION|SOLUTION|Notes?)\b/.test(x)); b.splice(e < 0 ? b.length : e, 0, 'CORRECT ANSWER: (from the marks)'); caI = b.findIndex(x => /^CORRECT ANSWERS?:/.test(x)); }
   const pre = b.slice(0, caI), caLine = b[caI], post = b.slice(caI + 1);
   const optRe = /^([A-H])[.)]\s+(.*)$/;
-  const isMatch = /drag/i.test(q.kind) || pre.some(x => /^\s+→\s/.test(x));
+  const isMatch = /drag|match/i.test(q.kind) || pre.some(x => /^\s*(→|[-•]\s.*→)/.test(x)) || pre.some(x => /^Scenario \d+:/.test(x)) || pre.some(x => /^\[MATCHING QUESTION\]/i.test(x.trim()));
   const out = { title: q.title, category, ref };
   if (isMatch) {
-    // choices: an indented "- X" list or a "Methods: a / b / c" line; statements: "A. text" then "→ choice"
-    let choices = [], stem = [], items = [], map = [];
-    for (let k = 0; k < pre.length; k++) {
-      const x = pre[k], m = x.match(optRe);
-      if (m) { let t = m[2]; while (pre[k + 1] && !/^\s+→/.test(pre[k + 1]) && !optRe.test(pre[k + 1]) && pre[k + 1].trim()) t += ' ' + pre[++k].trim(); items.push(t.replace(/^"|"$/g, '').replace(/^“|”$/g, '')); continue; }
-      const ar = x.match(/^\s+→\s+(.*)$/); if (ar) { map[items.length - 1] = ar[1].trim(); continue; }
-      const li = x.match(/^\s+[-•]\s+(.*)$/); if (li && !items.length) { choices.push(li[1].trim()); continue; }
-      const cl = x.match(/^(Methods|Classifications|Choices|Options|Categories|Available [a-z ]+):\s*(.+)$/i); if (cl && !items.length) { choices = cl[2].split(/\s+[\/|]\s+/).map(s => s.trim()); continue; }
-      if (!items.length) stem.push(x);
-    }
+    // one reader for every matching layout in the quiz files:
+    //   statements as "A. text", "Scenario 1: text", a quoted definition (may wrap), or "- text → answer" on one line;
+    //   the answer on the next line as "→ answer", "→ ✓ answer" or "→ ✓ Correct Answer: answer" (anything after "←" is a note);
+    //   choices as an indented "- choice" list before the statements, or "Terms: a | b | c" / "Methods: a / b" / "Available …: a | b"
+    //   — otherwise the set of answers. A mapping may also come after the answer line as "- Scenario 1 → X" or "- A → X".
+    let choices = [], stem = [], items = [], map = [], buf = null, open = false;
+    const clean = s => s.replace(/\s*←.*$/, '').replace(/^✓\s*(Correct Answer:\s*)?/i, '').replace(/\s*✓\s*$/, '').trim();
+    const unq = s => s.trim().replace(/^["“]|["”]:?$/g, '').replace(/:$/, '').trim();
+    const flush = () => { if (buf != null) { items.push(unq(buf)); buf = null; open = false; } };
+    pre.forEach(x => {
+      const s = x.trim(); if (!s || /^\[MATCHING QUESTION\]$/i.test(s) || /^Definition\s*→/.test(s)) return;
+      const one = s.match(/^[-•]\s*(.+?)\s*→\s*(.+)$/); if (one) { flush(); items.push(unq(one[1])); map[items.length - 1] = clean(one[2]); return; }
+      const ar = s.match(/^→\s*(.+)$/); if (ar) { flush(); map[items.length - 1] = clean(ar[1]); return; }
+      const cl = s.match(/^(Terms|Methods|Classifications|Choices|Options|Categories|Available [a-z ]+):\s*(.+)$/i); if (cl && !items.length && buf == null) { choices = cl[2].split(/\s*[|\/]\s*/).map(v => v.trim()).filter(Boolean); return; }
+      const sc = s.match(/^Scenario \d+:\s*(.*)$/), op = s.match(optRe), q = /^["“]/.test(s);
+      if (sc || op || q) { flush(); buf = sc ? sc[1] : op ? op[2] : s; open = q && !/["”]:?$/.test(s.slice(1)); return; }
+      if (buf != null && (open || /^\s{2,}/.test(x))) { buf += ' ' + s; if (open && /["”]:?$/.test(s)) open = false; return; }
+      const li = x.match(/^\s+[-•]\s+(.*)$/); if (li && !items.length && buf == null) { choices.push(li[1].trim()); return; }
+      if (!items.length && buf == null) stem.push(x);
+    });
+    flush();
+    post.forEach(x => { const mm = x.trim().match(/^-\s*(?:Scenario\s*(\d+)|([A-H]))\s*→\s*(.+)$/); if (mm) { const k = mm[1] ? +mm[1] - 1 : mm[2].charCodeAt(0) - 65; if (map[k] == null) map[k] = clean(mm[3]); } });   // only fills answers the statements didn't give
+    if (!choices.length) choices = [...new Set(map.filter(Boolean))];   // choices named only inside the question: use the answers
     const key = s => s.toLowerCase().replace(/\s*\(.*$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
     const c = map.map((v, k) => { const want = key(v); let idx = choices.findIndex(ch => key(ch) === want); if (idx < 0) idx = choices.findIndex(ch => key(ch).startsWith(want) || want.startsWith(key(ch))); if (idx < 0) throw new Error('statement ' + String.fromCharCode(65 + k) + ' answer "' + v + '" is not one of the choices'); return idx; });
-    if (!choices.length || items.length < 2 || c.length !== items.length) throw new Error('could not read the matching layout');
-    let ex = post.filter(x => !/^- .+:\s*Statements?\s/i.test(x) && !/^- .+?:\s*Statement/i.test(x));
+    if (!choices.length || items.length < 2 || c.length !== items.length) throw new Error('could not read the matching layout (' + items.length + ' statements, ' + c.length + ' answers, ' + choices.length + ' choices)');
+    let ex = post.filter(x => !/^- .+:\s*Statements?\s/i.test(x) && !/^- .+?:\s*Statement/i.test(x) && !/^\s*-\s*(Scenario \d+|[A-H])\s*→/.test(x));
     while (ex.length && /^-\s/.test(ex[0])) ex.shift();
-    Object.assign(out, { t: 'match', s: html(stem), items, opts: choices, c, e: html(ex.map(x => x.replace(/^Explanation:\s*/, ''))) });
+    Object.assign(out, { t: 'match', s: html(stem), items, opts: choices, c, e: html(ex.map(x => x.replace(/^(Explanation|EXPLANATION|SOLUTION):\s*/, ''))) });
     return out;
   }
   const opts = [], marks = [], stem = [];
   for (let k = 0; k < pre.length; k++) {
-    const m = pre[k].match(optRe);
-    if (m && (opts.length || !/^\s/.test(pre[k]))) {
-      let t = m[2]; const good = /✓\s*CORRECT/.test(t), why = (t.match(/✗\s*INCORRECT\s*(\(.*\))?/) || [])[1];
-      t = t.replace(/\s*✓\s*CORRECT.*$/, '').replace(/\s*✗\s*INCORRECT.*$/, '').trim();
+    const m = pre[k].trim().match(optRe);
+    if (m && (opts.length || !/^\s/.test(pre[k]) || /^\s{1,4}[A-H]\)\s/.test(pre[k]))) {   // indented options only in the "A)" style
+      let t = m[2]; while (pre[k + 1] && /^\s{3,}\S/.test(pre[k + 1]) && !optRe.test(pre[k + 1].trim())) t += ' ' + pre[++k].trim();
+      const good = /✓\s*CORRECT/.test(t);
+      t = t.replace(/^✓\s*CORRECT ANSWER:\s*/, '').replace(/\s*✓\s*CORRECT.*$/, '').replace(/\s*✗\s*INCORRECT.*$/, '').trim();
       opts.push(t); marks.push(good); continue;
     }
     if (opts.length && pre[k].trim()) { warn.push(q.div + ' Q' + q.n + ' (line ' + q.line + '): text after the options was added to the question: "' + pre[k].trim().slice(0, 60) + '"'); }
     if (!/^Answer:\s*_+/.test(pre[k])) stem.push(pre[k]);
   }
-  const ex = post.map(x => x.replace(/^Explanation:\s*/, ''));
+  const ex = post.map(x => x.replace(/^(Explanation|EXPLANATION|SOLUTION|Solution)\s*(:|—)\s*/, ''));
   if (opts.length >= 2) {
-    const letters = (caLine.replace(/^CORRECT ANSWERS?:\s*/, '').split(/\s+—\s+/)[0].match(/\b[A-H]\b/g) || []);
+    const letters = caLine.replace(/^CORRECT ANSWERS?:\s*/, '').split(/\s+—\s+/)[0].replace(/\([^)]*\)/g, ' ').split(/,|\band\b|&/).map(s => (s.trim().match(/^([A-H])(?=$|[\s).:])/) || [])[1]).filter(Boolean);
     let c = [...new Set(letters.map(x => x.charCodeAt(0) - 65))].filter(k => k < opts.length);
     if (!c.length) c = marks.map((g, k) => g ? k : -1).filter(k => k >= 0);
     if (!c.length) throw new Error('no correct option found');
@@ -136,7 +158,7 @@ vm.runInContext(qSrc, ctx);
 const old = ctx.ARE.questions || [];
 const maxId = Math.max(-1, ...old.map(q => +(String(q.id).match(/^q(\d+)$/) || [0, -1])[1]));
 let next = maxId + 1;
-const kept = old.filter(q => KEEP.includes(q.d) || !DIVS.includes(q.d));
+const kept = old.filter(q => KEEP.includes(q.d) || !DIVS.includes(canon(q.d)));
 const made = [], fail = [], objCount = {};
 qs.forEach(q => {
   try {

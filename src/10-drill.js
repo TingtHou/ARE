@@ -1,6 +1,6 @@
 
 /* ================= ENDLESS PRACTICE (#drill) =================
-   Pick PA, PPD or PDD and answer one question after another until you finish. Questions and objectives you miss
+   Pick a division (PA, PPD, PDD, PcM or PjM) and answer one question after another until you finish. Questions and objectives you miss
    come up more often; with ChatGPT or Claude in the page, about one in three questions is newly written for your
    weakest objectives (saved to My material, so later sessions have a bigger pool). Answers count like Practice:
    misses go into the Mistakes schedule. */

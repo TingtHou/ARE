@@ -69,7 +69,9 @@ function D() {
 }
 
 /* ---------- small helpers ---------- */
-const DAY = 864e5, MIN = 6e4, INT = [10 * MIN, DAY, 3 * DAY, 7 * DAY, 16 * DAY, 35 * DAY], MGAP = [DAY, 3 * DAY, 7 * DAY], DIVS = ['PA', 'PPD', 'PDD'];
+const DAY = 864e5, MIN = 6e4, INT = [10 * MIN, DAY, 3 * DAY, 7 * DAY, 16 * DAY, 35 * DAY], MGAP = [DAY, 3 * DAY, 7 * DAY], DIVS = ['PA', 'PPD', 'PDD', 'PcM', 'PjM'];
+const DIVU = {}; DIVS.forEach(d => { DIVU[d.toUpperCase()] = d; });
+const canonDiv = s => DIVU[String(s || '').trim().toUpperCase()] || null;   // NCARB spells PcM and PjM in mixed case; input may be any case
 const rnd = () => crypto.randomBytes(32).toString('base64url');
 const sha = s => crypto.createHash('sha256').update(s).digest('base64url');
 const nowS = () => Math.floor(Date.now() / 1000);
@@ -87,7 +89,7 @@ const normD = s => { const p = String(s || '').split('-').map(Number); return p.
 const dayNo = s => { const p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / DAY; };
 const daysFrom = (a, b) => Math.round(dayNo(b) - dayNo(a));
 const whenStr = t => { const d = daysFrom(today(), dsOf(t)); return d <= 0 ? 'today' : d === 1 ? 'tomorrow' : 'in ' + d + ' days'; };
-const odiv = o => { const p = String(o || '').split(' ')[0]; return DIVS.includes(p) ? p : null; };
+const odiv = o => canonDiv(String(o || '').trim().split(/\s+/)[0]);
 const L = i => String.fromCharCode(65 + i);
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const newUid = () => 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -103,13 +105,14 @@ function md2html(t) {
 const oneLine = t => inlineMd(String(t || '').trim()).replace(/\n/g, '<br>');
 
 /* ---------- the shared material, read from the live site (cached 10 minutes) ---------- */
-const NOTE_PAGES = { overview: 'Overview', objectives: 'Objective map', pa: 'Programming & Analysis', ppd: 'Planning & Design', pdd: 'Development & Docs', numbers: 'Numbers' };
+const NOTE_PAGES = { overview: 'Overview', objectives: 'Objective map', pa: 'Programming & Analysis', ppd: 'Planning & Design', pdd: 'Development & Docs', pcm: 'Practice Management', pjm: 'Project Management', contracts: 'Contracts (AIA)', numbers: 'Numbers' };
 let MAT = null, MAT_AT = 0;
 async function material() {
   if (MAT && Date.now() - MAT_AT < 600000) return MAT;
   const get = p => fetch(SITE + '/' + p, { headers: { 'cache-control': 'no-cache' } }).then(r => { if (!r.ok) throw new Error(p + ' ' + r.status); return r.text(); });
   const ids = Object.keys(NOTE_PAGES);
-  const [c, q, p, ...notes] = await Promise.all(['material/cards.js', 'material/questions.js', 'material/plan.js'].concat(ids.map(i => 'material/notes/' + i + '.html')).map(get));
+  // a notes page the site doesn't have yet (say, before a new one is published) is just left out
+  const [c, q, p, ...notes] = await Promise.all(['material/cards.js', 'material/questions.js', 'material/plan.js'].map(get).concat(ids.map(i => get('material/notes/' + i + '.html').catch(() => ''))));
   const ctx = {}; ctx.window = ctx; vm.createContext(ctx);
   [c, q, p].forEach(code => vm.runInContext(code, ctx, { timeout: 2000 }));
   const A = JSON.parse(JSON.stringify(ctx.ARE || {}));
@@ -264,7 +267,7 @@ function toolRating(X, id, r) {
   s.n = (s.n || 0) + 1; s.r = r; S.cards[id] = s; logAct(S);
   return 'next due ' + whenStr(s.due);
 }
-const objIn = s => { const o = String(s || '').trim().toUpperCase().replace(/\s+/g, ' '), d = odiv(o), ob = (o.match(/\d+\.\d+/) || [''])[0]; return { o, d, ob, full: d ? (ob ? d + ' ' + ob : d) : '' }; };
+const objIn = s => { const o0 = String(s || '').trim().replace(/\s+/g, ' '), d = odiv(o0), o = d ? o0.replace(/^[A-Za-z]+/, d) : o0.toUpperCase(), ob = (o.match(/\d+\.\d+/) || [''])[0]; return { o, d, ob, full: d ? (ob ? d + ' ' + ob : d) : '' }; };
 const custom = (S, kind) => { S.custom = S.custom || {}; S.custom[kind] = S.custom[kind] || {}; return S.custom[kind]; };
 const OBJ = (props, req) => ({ type: 'object', properties: props || {}, required: req || [], additionalProperties: false });
 const RO = { readOnlyHint: true, openWorldHint: false }, RW = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -431,7 +434,7 @@ function packOfItem(q) {
   out.explanation = strip(q.e); return out;
 }
 function itemFromInput(i) {
-  const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD or PDD, e.g. "PPD 2.2".');
+  const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD, PDD, PcM or PjM, e.g. "PPD 2.2".');
   const str = v => String(v == null ? '' : v).trim(), arr = v => Array.isArray(v) ? v.map(str).filter(Boolean) : [];
   const pick = (list, w) => { const x = str(w); let k = list.findIndex(o => o.toLowerCase() === x.toLowerCase()); if (k < 0 && /^[A-Za-z]$/.test(x)) k = x.toUpperCase().charCodeAt(0) - 65; if (k < 0 && x.length > 3) k = list.findIndex(o => o.toLowerCase().startsWith(x.toLowerCase().slice(0, 25))); return k >= 0 && k < list.length ? k : -1; };
   const title = str(i.title), stem = str(i.question); if (!stem) throw new Error('question is empty.');
@@ -473,8 +476,8 @@ const TOOLS = [
       const key = d + ' ' + ob, out = X.M.heads.filter(h => h.lv === 3 && h.objs.includes(key)).map(h => h.title + '\n' + h.full);
       return { objective: key, title: X.objTitle(key), notes: out.join('\n\n').slice(0, 12000) || '(no notes section for this objective)', my_points: X.points.filter(p => p.div === d && p.obj === ob).map(p => p.text) }; } },
   { name: 'practice_questions', title: 'Pick practice questions', annotations: RO, description: 'Practice questions for quizzing, with the correct answers so you can grade. Never show the correct letters or explanation until the student has answered.',
-    inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.1", or "" for any' }, division: { type: 'string', description: 'PA, PPD, PDD or ""' }, count: { type: 'integer', minimum: 1, maximum: 10 }, which: { type: 'string', enum: ['unanswered', 'missed', 'due_mistakes', 'any'] } }, ['count']),
-    run: (X, i) => { let l = X.items.slice(); const { full } = objIn(i.objective), d = String(i.division || '').trim().toUpperCase();
+    inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.1" or "PcM 2.1", or "" for any' }, division: { type: 'string', description: 'PA, PPD, PDD, PcM, PjM or ""' }, count: { type: 'integer', minimum: 1, maximum: 10 }, which: { type: 'string', enum: ['unanswered', 'missed', 'due_mistakes', 'any'] } }, ['count']),
+    run: (X, i) => { let l = X.items.slice(); const { full } = objIn(i.objective), d = canonDiv(i.division) || '';
       if (full && full.includes(' ')) l = l.filter(q => q.o === full); if (d) l = l.filter(q => q.d === d);
       if (i.which === 'unanswered') l = l.filter(q => !X.S.ans[q.id]); if (i.which === 'missed') l = l.filter(q => X.S.ans[q.id] && !X.S.ans[q.id].ok);
       if (i.which === 'due_mistakes') { const due = mistDue(X); l = l.filter(q => due.includes(q.id)); }
@@ -528,13 +531,13 @@ const TOOLS = [
       return { added: out.length, questions: out, problems: errs }; } },
   { name: 'question_examples', title: 'Example questions to follow', annotations: RO, description: 'Up to four questions from the site’s bank, one per format (mc, cata, num, match), from the objective (or its division) — the style to follow when writing new questions. Includes the correct answers.',
     inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PDD 1.5", or a division like "PPD"' } }, ['objective']),
-    run: (X, i) => { const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD or PDD.');
+    run: (X, i) => { const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD, PDD, PcM or PjM.');
       const pool = X.items.filter(q => !q.mine && (ob.ob ? q.o === ob.full : q.d === ob.d)), more = X.items.filter(q => !q.mine && q.d === ob.d);
       const out = []; ['mc', 'cata', 'num', 'match'].forEach(ty => { const q = pool.find(x => x.t === ty) || more.find(x => x.t === ty); if (q) out.push(Object.assign({ question_id: q.id, objective: q.o }, packOfItem(q))); });
       return out.length ? out : 'No example questions for that division yet.'; } },
   { name: 'list_objectives', title: 'List objectives', annotations: RO, description: 'Every NCARB objective of a division (PA, PPD or PDD), grouped by exam section, with how many bank questions and how many of the student’s own questions each has. Use it to cover a whole division.',
-    inputSchema: OBJ({ division: { type: 'string', enum: ['PA', 'PPD', 'PDD'] } }, ['division']),
-    run: (X, i) => { const d = String(i.division || '').toUpperCase(), ol = X.M.outline[d]; if (!ol) throw new Error('Unknown division.');
+    inputSchema: OBJ({ division: { type: 'string', enum: DIVS } }, ['division']),
+    run: (X, i) => { const d = canonDiv(i.division), ol = X.M.outline[d]; if (!ol) throw new Error('Unknown division.');
       return ol.filter(s => s.objs.length).map(s => ({ section: s.title, objectives: s.objs.map(o => ({ objective: o, title: X.objTitle(o), bank_questions: X.items.filter(q => q.o === o && !q.mine).length, my_questions: X.items.filter(q => q.o === o && q.mine).length })) })); } },
   { name: 'add_study_point', title: 'Add a study point', annotations: RW, write: true, description: 'Save a short study note to the student’s own material. It also shows under that objective in the site’s notes.',
     inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.3", or a division like "PPD"' }, text: { type: 'string' } }, ['objective', 'text']),
@@ -566,7 +569,7 @@ const TOOLS = [
     inputSchema: OBJ({ task_id: { type: 'string' }, done: { type: 'boolean' } }, ['task_id', 'done']),
     run: (X, i) => { const id = String(i.task_id || ''); if (!/^c?w\d+t\d+$/.test(id)) throw new Error('Unknown task_id.'); if (i.done) X.S.plan[id] = 1; else delete X.S.plan[id]; logAct(X.S); return { ok: true }; } }
 ];
-const INSTRUCTIONS = 'This is the student’s ARE Study System (ARE 5.0: PA, PPD and PDD). The tools read and update the same progress the student sees on the study website, so answers, ratings and added material show up there too. ' +
+const INSTRUCTIONS = 'This is the student’s ARE Study System (ARE 5.0: PA, PPD, PDD, PcM and PjM). The tools read and update the same progress the student sees on the study website, so answers, ratings and added material show up there too. ' +
   'Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Prefer the site’s own material (search_material, get_notes) and the student’s uploaded documents (search_library) for facts, and cite them. The student may have made study agents on the website (list_agents): when they name one, follow its instructions and use its documents. ' +
   'When writing questions, follow the format rules in add_practice_question and the style of question_examples; to cover a whole division, go objective by objective with list_objectives. When quizzing, ask one question at a time with lettered options, wait for the student’s reply, then call record_answer before explaining. Never reveal an answer or explanation before the student responds. For flashcards, show the question, wait, reveal the answer, then ask how it went and call rate_flashcard. Keep replies short unless asked for more.';
 
