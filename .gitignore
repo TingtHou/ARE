@@ -1,3 +1,6 @@
 aws-deploy/
 *.zip
 _test.html
+
+# quiz source files (may contain other people's questions); import them with tools/import-quizzes.js
+*Quizzes*.txt

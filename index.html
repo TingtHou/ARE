@@ -402,6 +402,19 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .aistat{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:14px 0 6px}.aistat>div{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font:14px var(--sans)}
 .cgsteps{list-style:none;padding:0;margin:10px 0;font:14px/1.45 var(--sans)}.cgsteps li{display:flex;gap:8px;margin:0 0 6px}.cgsteps li i{flex:0 0 18px;font-style:normal;font-weight:700;text-align:center}.cgsteps li div{flex:1;min-width:0}.cgsteps li.yes i{color:var(--ok)}.cgsteps li.no i{color:var(--ink-3)}
 .cgmsg{width:100%;box-sizing:border-box;font:14px var(--sans);padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--paper);color:var(--ink);resize:none}
+.qz .stem .qtitle{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+.qz .stem pre.qtab,.qz .exp pre.qtab{font:12.5px/1.45 var(--mono);background:var(--surface-2);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;overflow-x:auto;white-space:pre;margin:8px 0}
+.qz .exp .qsrc{font-size:12px;color:var(--ink-3);margin-top:8px}
+.qnum{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:4px 0 8px}
+.qnumin{width:min(220px,100%);font:16px var(--sans);padding:9px 12px;border:1px solid var(--rule);border-radius:6px;background:var(--surface-2);color:var(--ink)}
+.qnumin.right{border-color:var(--ok);background:var(--ok-soft);color:var(--ok);font-weight:600}.qnumin.wrong{border-color:var(--flag);background:var(--flag-soft);color:var(--flag)}
+.qunit{font:14px var(--sans);color:var(--ink-2)}.qnumans{font:14px var(--sans);color:var(--ok)}
+.qmatch{display:flex;flex-direction:column;gap:8px;margin:4px 0 8px}
+.qmrow{border:1px solid var(--rule);border-radius:6px;padding:10px 12px;background:var(--surface-2)}
+.qmtxt{font:14px/1.45 var(--sans);color:var(--ink);margin-bottom:8px}
+.qmsel{width:100%;max-width:100%;font:15px var(--sans)}
+.qmrow.right{border-color:var(--ok);background:var(--ok-soft)}.qmrow.wrong{border-color:var(--flag);background:var(--flag-soft)}
+.qmans{font:13px var(--sans);color:var(--ok);font-weight:600;margin-top:6px}
 .libdrop{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1.5px dashed var(--rule);border-radius:10px;padding:14px;margin:8px 0 12px}.libdrop.on{border-color:var(--accent);background:var(--accent-soft)}
 .agdocs{margin:2px 0 4px 22px;max-height:160px;overflow:auto}
 .chagent{max-width:46%;font:12px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--ink)}
@@ -790,7 +803,12 @@ const A=window.ARE||{};
 const pdate=s=>{const p=String(s||'').split('-').map(Number);return new Date(p[0],(p[1]||1)-1,p[2]||1);};
 const fmtDate=(d,o)=>d.toLocaleDateString(undefined,o||{weekday:'short',day:'numeric',month:'short'});
 const BASE_CARDS=(A.cards||[]).filter(c=>c&&c.id!=null&&c.q&&c.a).map(c=>Object.assign({},c,{id:String(c.id),d:c.d||'Other',o:c.o||'—'}));
-const BASE_ITEMS=(A.questions||[]).filter(q=>q&&q.id!=null&&q.s&&Array.isArray(q.opts)&&Array.isArray(q.c)).map(q=>Object.assign({},q,{id:String(q.id),t:q.t==='cata'?'cata':'mc',e:q.e||''}));
+/* question types: mc (one answer), cata (check all that apply), num (fill in a number), match (drag and drop / matching) */
+const QTYPES=['mc','cata','num','match'];
+const qValid=q=>!!(q&&q.s&&(q.t==='num'?isFinite(parseFloat(q.ans)):
+  q.t==='match'?Array.isArray(q.items)&&q.items.length>=2&&Array.isArray(q.opts)&&q.opts.length>=2&&Array.isArray(q.c)&&q.c.length===q.items.length&&q.c.every(k=>k>=0&&k<q.opts.length):
+  Array.isArray(q.opts)&&q.opts.length>=2&&Array.isArray(q.c)&&q.c.length&&q.c.every(k=>k>=0&&k<q.opts.length)));
+const BASE_ITEMS=(A.questions||[]).filter(q=>q&&q.id!=null&&q.s).map(q=>Object.assign({},q,{id:String(q.id),t:QTYPES.includes(q.t)?q.t:'mc',e:q.e||''})).filter(qValid);
 const BASE_PLAN=(A.plan||[]).slice().sort((a,b)=>a.w-b.w);
 let PLAN=BASE_PLAN;   // replaced by the person's own plan (S.customPlan) when they have one
 const WEIGHTS=A.weights||{};
@@ -806,8 +824,8 @@ const MATERR=(()=>{
   if(!A.plan)out.push('material/plan.js did not load — plan and exam dates are missing');
   seen(BASE_CARDS,'cards.js'); seen(BASE_ITEMS,'questions.js');
   (A.cards||[]).forEach((c,i)=>{if(!c||c.id==null||!c.q||!c.a)out.push('cards.js: card #'+(i+1)+' is missing id, q or a and was skipped');});
-  (A.questions||[]).forEach((q,i)=>{if(!q||q.id==null||!q.s||!Array.isArray(q.opts)||!Array.isArray(q.c))out.push('questions.js: question #'+(i+1)+' is missing id, s, opts or c and was skipped');});
-  BASE_ITEMS.forEach(q=>{if(q.c.some(k=>k<0||k>=q.opts.length))out.push('questions.js: '+q.id+' has a correct answer number outside its options (count from 0)');
+  (A.questions||[]).forEach((q,i)=>{const t=q&&(QTYPES.includes(q.t)?q.t:'mc');if(!q||q.id==null||!q.s||!qValid(Object.assign({},q,{t})))out.push('questions.js: question #'+(i+1)+(q&&q.id!=null?' ('+q.id+')':'')+' is missing '+(t==='num'?'s or a numeric ans':t==='match'?'s, items, opts or c (one right choice per item)':'s, opts or c, or a correct answer is outside its options (count from 0)')+' and was skipped');});
+  BASE_ITEMS.forEach(q=>{
     if(q.t==='mc'&&q.c.length!==1)out.push('questions.js: '+q.id+' is multiple choice but lists '+q.c.length+' correct answers — use t:\'cata\' or one answer');
     if(!DIVS.includes(q.d))out.push('questions.js: '+q.id+' has division \''+q.d+'\' — use PA, PPD or PDD');});
   EXAMS.forEach(e=>{if(isNaN(e.date))out.push('plan.js: exam '+e.d+' has an unreadable date — use YYYY-MM-DD');});
@@ -835,14 +853,14 @@ let CUSTERR=[];
 const newUid=()=>'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 function rebuildMaterial(){
   const C=(S&&S.custom)||{}, cc=C.cards||{}, ci=C.items||{};
-  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw'];
+  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw','ans','tol','unit','items'];
   const pickk=(o,ks)=>{const r={};ks.forEach(k=>{if(o[k]!=null)r[k]=o[k];});return r;};
   CARDS=[]; BASE_CARDS.forEach(c=>{const o=cc[c.id];if(o&&o.hidden)return;CARDS.push(o?Object.assign({},c,pickk(o,CK),{edited:true}):c);});
   Object.keys(cc).filter(k=>!BASE_CARDS.some(b=>b.id===k)&&!cc[k].hidden&&cc[k].q&&cc[k].a).forEach(k=>CARDS.push(Object.assign({o:'—',d:'My cards'},pickk(cc[k],CK),{id:k,mine:true})));
   ITEMS=[]; BASE_ITEMS.forEach(q=>{const o=ci[q.id];if(o&&o.hidden)return;ITEMS.push(o?Object.assign({},q,pickk(o,IK),{edited:true}):q);});
   Object.keys(ci).filter(k=>!BASE_ITEMS.some(b=>b.id===k)&&!ci[k].hidden).forEach(k=>ITEMS.push(Object.assign({t:'mc',e:''},pickk(ci[k],IK),{id:k,mine:true})));
   CUSTERR=[];
-  ITEMS=ITEMS.filter(q=>{const ok=q.s&&Array.isArray(q.opts)&&q.opts.length>=2&&Array.isArray(q.c)&&q.c.length&&q.c.every(k=>k>=0&&k<q.opts.length);if(!ok&&q.mine)CUSTERR.push('Your question “'+strip(q.s||'(no text)').slice(0,50)+'” is missing options or a correct answer and is hidden until you fix it.');return ok;});
+  ITEMS=ITEMS.filter(q=>{const ok=qValid(q);if(!ok&&q.mine)CUSTERR.push('Your question “'+strip(q.s||'(no text)').slice(0,50)+'” is missing options or a correct answer and is hidden until you fix it.');return ok;});
   ITEM_MAP={}; ITEMS.forEach(it=>{ITEM_MAP[it.id]=it;});
   const cp=S&&S.customPlan; PLAN=(cp&&Array.isArray(cp.weeks)&&cp.weeks.length)?cp.weeks:BASE_PLAN;
   DECKS=[...new Set(CARDS.map(c=>c.d))];
@@ -887,7 +905,24 @@ async function loadNotes(){
     document.body.appendChild(t);
   });
 }
-const itemOk=(it,sel)=>sel.length===it.c.length&&sel.every(i=>it.c.includes(i));
+const numIn=v=>{const n=parseFloat(String(v==null?'':v).replace(/[$,\s]/g,''));return isFinite(n)?n:null;};
+const itemOk=(it,sel)=>{sel=sel||[];
+  if(it.t==='num'){const v=numIn(sel[0]);return v!=null&&Math.abs(v-parseFloat(it.ans))<=(+it.tol||0)+1e-9;}
+  if(it.t==='match')return sel.length===it.c.length&&it.c.every((k,i)=>+sel[i]===k);
+  return sel.length===it.c.length&&sel.every(i=>it.c.includes(i));};
+const answered=(it,s)=>{s=s||[];return it.t==='num'?numIn(s[0])!=null:it.t==='match'?s.some(v=>+v>=0):s.length>0;};
+const qTypeName=it=>({cata:'Check all that apply',num:'Fill in the number',match:'Drag and drop · match'})[it.t]||'Multiple choice';
+const numText=(it,v)=>String(v)+(it.unit?(it.unit==='dollars'?' dollars':' '+it.unit):'');
+/* what was answered, in words: options for mc/cata, the number, or each statement with its choice */
+function ansText(it,sel){
+  sel=sel||[];
+  if(it.t==='num')return sel.length&&String(sel[0]).trim()!==''?numText(it,sel[0]):'(no answer)';
+  if(it.t==='match')return sel.length?it.items.map((x,i)=>'“'+strip(x).slice(0,60)+(strip(x).length>60?'…':'')+'” → '+(sel[i]!=null&&+sel[i]>=0&&it.opts[sel[i]]!=null?it.opts[sel[i]]:'—')).join('; '):'(no answer)';
+  return sel.length?sel.map(k=>it.opts[k]).join('; '):'(no answer)';
+}
+const rightText=it=>it.t==='num'?numText(it,it.ans):ansText(it,it.c);
+/* the whole question as plain text, for search and for the AI */
+const qPlain=it=>it.t==='num'?'(type a number'+(it.unit?' in '+it.unit:'')+')':it.t==='match'?'Statements: '+it.items.map((x,i)=>(i+1)+'. '+strip(x)).join(' ')+' Choices: '+it.opts.map((x,i)=>String.fromCharCode(65+i)+'. '+x).join(' '):it.opts.map((x,i)=>String.fromCharCode(65+i)+'. '+x).join(' ');
 
 /* ---------- state + sync ---------- */
 const LS='are_study_system_v1';
@@ -2038,27 +2073,44 @@ function listProg(list){
   let d=0,o=0;list.forEach(x=>{const a=S.ans[x.i];if(a){d++;if(a.ok)o++;}});
   const p=$('#qzprog');if(p)p.textContent=list.length+' items shown · '+d+' answered · '+o+' correct'+(d?' ('+Math.round(o/d*100)+'%)':'');
 }
-/* one item card. mode.live: answers record immediately; mode.run: selection only, no reveal; mode.review: show result for given sel */
+/* one item card. mode.live: answers record immediately; mode.run: selection only, no reveal; mode.review: show result for given sel.
+   sel is a list: option numbers (mc, cata), [the typed number] (num), or the chosen option for each statement (match) */
 function itemEl(it,idx,mode){
   const el=document.createElement('div');el.className='qz';el.id='it-'+idx;
-  const typ=it.t==='cata'?'Check all that apply':'Multiple choice';
-  el.innerHTML='<div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>'+typ+'</span>'+(it.mine?'<span class="chip c-out">Yours</span>':it.edited?'<span class="chip c-rot">Edited</span>':'')+(mode.onSel?'':'<button type="button" class="lnk" data-act="edit" style="margin-left:auto;font-size:11px">Edit</button>')+'</div>'+
-    '<div class="stem">'+it.s+'</div>'+it.opts.map((o,i)=>'<button type="button" class="opt" data-i="'+i+'">'+esc(o)+'</button>').join('')+
-    '<div class="foot"></div><div class="exp" hidden></div>';
+  const editable=it.t==='mc'||it.t==='cata', typed=it.t==='num'||it.t==='match';
+  let body;
+  if(it.t==='num')body='<div class="qnum"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" class="qnumin" aria-label="Your answer'+(it.unit?' in '+esc(it.unit):'')+'" placeholder="Your answer">'+(it.unit?'<span class="qunit">'+esc(it.unit)+'</span>':'')+'</div>';
+  else if(it.t==='match'){const order=shuffle(it.items.map((x,i)=>i));   // shuffled, so the order of the statements gives nothing away
+    body='<div class="qmatch">'+order.map(i=>'<div class="qmrow" data-mi="'+i+'"><div class="qmtxt">'+esc(it.items[i])+'</div><select class="sel qmsel" data-mi="'+i+'" aria-label="Your match for this statement"><option value="-1">Choose…</option>'+it.opts.map((o,k)=>'<option value="'+k+'">'+esc(o)+'</option>').join('')+'</select><div class="qmans" hidden></div></div>').join('')+'</div>';}
+  else body=it.opts.map((o,i)=>'<button type="button" class="opt" data-i="'+i+'">'+esc(o)+'</button>').join('');
+  el.innerHTML='<div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>'+qTypeName(it)+'</span>'+(it.mine?'<span class="chip c-out">Yours</span>':it.edited?'<span class="chip c-rot">Edited</span>':'')+(mode.onSel||!editable?'':'<button type="button" class="lnk" data-act="edit" style="margin-left:auto;font-size:11px">Edit</button>')+'</div>'+
+    '<div class="stem">'+it.s+'</div>'+body+'<div class="foot"></div><div class="exp" hidden></div>';
   const foot=$('.foot',el);
   let sel=(mode.sel||[]).slice();
+  const readSel=()=>it.t==='num'?[$('.qnumin',el).value.trim()]:it.t==='match'?it.items.map((x,i)=>+$('.qmsel[data-mi="'+i+'"]',el).value):sel.slice();
+  const fill=s=>{s=s||[];if(it.t==='num')$('.qnumin',el).value=s[0]!=null?s[0]:'';if(it.t==='match')it.items.forEach((x,i)=>{$('.qmsel[data-mi="'+i+'"]',el).value=String(s[i]!=null?s[i]:-1);});};
+  const complete=s=>it.t==='num'?numIn(s[0])!=null:it.t==='match'?s.length===it.items.length&&s.every(v=>v>=0):s.length>0;
   const mark=()=>$$('.opt',el).forEach(b=>b.classList.toggle('on',sel.includes(+b.dataset.i)));
   const showResult=(s,info)=>{
-    $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
+    s=s||[];
+    if(it.t==='num'){const inp=$('.qnumin',el),good=itemOk(it,s);inp.value=s[0]!=null?s[0]:'';inp.disabled=true;inp.classList.add(good?'right':'wrong');
+      $('.qnum',el).insertAdjacentHTML('beforeend','<span class="qnumans">Answer: <b>'+esc(numText(it,it.ans))+'</b>'+(+it.tol>0&&+it.tol>=0.5*Math.pow(10,-((String(it.ans).split('.')[1]||'').length))*1.5?' (± '+it.tol+')':'')+'</span>');}
+    else if(it.t==='match')it.items.forEach((x,i)=>{const sl=$('.qmsel[data-mi="'+i+'"]',el),row=sl.closest('.qmrow'),v=s[i]!=null?+s[i]:-1,good=v===it.c[i];
+      sl.value=String(v);sl.disabled=true;row.classList.add(good?'right':'wrong');if(!good){const ans=$('.qmans',row);ans.hidden=false;ans.textContent='Answer: '+it.opts[it.c[i]];}});
+    else $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
     const ok=itemOk(it,s), exp=$('.exp',el);exp.hidden=false;
     exp.innerHTML='<strong style="color:'+(ok?'var(--ok)':'var(--flag)')+'">'+(ok?'Correct.':'Not quite.')+'</strong> '+it.e+(info?'<div class="learned '+info.cls+'">'+info.msg+'</div>':'');
     foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'');
   };
+  const submit=()=>{const s=readSel();if(!complete(s)){toast(it.t==='num'?'Type a number first':it.t==='match'?'Choose a match for every statement':'Pick at least one option');return;}
+    const r=record(idx,s);showResult(s,r);refreshProg();};
   if(mode.live&&S.ans[idx]&&!mode.fresh){showResult(S.ans[idx].sel);}
   else if(mode.review){showResult(mode.sel||[]);}
   else{
-    mark();
-    if(it.t==='cata'&&mode.live)foot.innerHTML='<button type="button" class="btn sm pri" data-act="submit">Submit selection</button>';
+    mark(); fill(sel);
+    if(it.t!=='mc'&&mode.live)foot.innerHTML='<button type="button" class="btn sm pri" data-act="submit">'+(it.t==='cata'?'Submit selection':'Submit answer')+'</button>';
+    if(typed&&mode.onSel){const tell=()=>mode.onSel(readSel());el.addEventListener('input',tell);el.addEventListener('change',tell);}
+    if(it.t==='num'&&mode.live)$('.qnumin',el).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submit();}});
   }
   el.addEventListener('click',e=>{
     const a=e.target.closest('[data-act]');
@@ -2068,7 +2120,7 @@ function itemEl(it,idx,mode){
       if(a.dataset.act==='aiexp'){aiExplainItem(it,(S.ans[idx]&&S.ans[idx].sel)||mode.sel||[],el,S.mist[idx]&&!S.mist[idx].fixed?idx:null);return;}
       if(a.dataset.act==='edit'){itemEditor(it,()=>{const nw=ITEM(it.id);if(nw)el.replaceWith(itemEl(nw,nw.id,mode));else el.remove();});return;}
       if(a.dataset.act==='retry'){el.replaceWith(itemEl(it,idx,Object.assign({},mode,{fresh:true})));}
-      if(a.dataset.act==='submit'&&sel.length){const r=record(idx,sel);showResult(sel,r);refreshProg();}
+      if(a.dataset.act==='submit')submit();
       return;
     }
     const b=e.target.closest('.opt');if(!b||b.disabled)return;
@@ -2139,12 +2191,12 @@ function paintRun(){
   const i=run.idx[run.cur], it=ITEM(i);
   area.innerHTML='<div class="qzctl"><div class="runbar"><div><span class="lbl">'+esc(run.label)+'</span><div class="timer" id="runT">'+fmt(runLeft())+'</div></div>'+
     '<div class="row"><button type="button" class="btn sm" id="runPrev"'+(run.cur?'':' disabled')+'>Previous</button><button type="button" class="btn sm" id="runNext">'+(run.cur<run.idx.length-1?'Next':'Review answers')+'</button><button type="button" class="btn sm pri" id="runEnd">Finish and score</button></div></div>'+
-    '<div class="dots" id="runDots">'+run.idx.map((x,k)=>'<button type="button" data-k="'+k+'" class="'+(run.sel[x]&&run.sel[x].length?'ans':'')+(k===run.cur?' cur':'')+'" aria-label="Item '+(k+1)+'">'+(k+1)+'</button>').join('')+'</div></div><div id="runItem"></div>';
-  $('#runItem').appendChild(itemEl(it,i,{sel:run.sel[i]||[],onSel:s=>{run.sel[i]=s;const d=$$('#runDots button')[run.cur];if(d)d.classList.toggle('ans',s.length>0);}}));
+    '<div class="dots" id="runDots">'+run.idx.map((x,k)=>'<button type="button" data-k="'+k+'" class="'+(answered(ITEM(x),run.sel[x])?'ans':'')+(k===run.cur?' cur':'')+'" aria-label="Item '+(k+1)+'">'+(k+1)+'</button>').join('')+'</div></div><div id="runItem"></div>';
+  $('#runItem').appendChild(itemEl(it,i,{sel:run.sel[i]||[],onSel:s=>{run.sel[i]=s;const d=$$('#runDots button')[run.cur];if(d)d.classList.toggle('ans',answered(it,s));}}));
   $('#runPrev').onclick=()=>{run.cur--;paintRun();};
   $('#runNext').onclick=()=>{if(run.cur<run.idx.length-1){run.cur++;paintRun();}else finishRun();};
   $('#runEnd').onclick=()=>{
-    const un=run.idx.filter(x=>!(run.sel[x]&&run.sel[x].length)).length;
+    const un=run.idx.filter(x=>!answered(ITEM(x),run.sel[x])).length;
     if(un&&runLeft()>0){modal('<div class="q">Finish with '+un+' unanswered?</div><p class="small">Unanswered items score zero. On the exam there is no penalty for guessing, so answer everything.</p><div class="row"><button type="button" class="btn pri" data-a="y">Finish and score</button><button type="button" class="btn" data-a="n">Keep going</button></div>',a=>{if(a==='y')finishRun();});}
     else finishRun();
   };
@@ -2155,7 +2207,7 @@ function finishRun(){
   const used=Math.min(run.secs,Math.floor((Date.now()-run.start)/1000));
   let ok=0, logged=0, fixedN=0; const byObj={};
   run.idx.forEach(i=>{const s=run.sel[i]||[];const good=itemOk(ITEM(i),s);if(good)ok++;
-    if(s.length){const r=record(i,s);if(!good)logged++;else if(r&&S.mist[i]&&S.mist[i].fixed&&r.msg.indexOf('Fixed')>=0)fixedN++;}else{S.ans[i]={sel:[],ok:false,at:Date.now()};}
+    if(answered(ITEM(i),s)){const r=record(i,s);if(!good)logged++;else if(r&&S.mist[i]&&S.mist[i].fixed&&r.msg.indexOf('Fixed')>=0)fixedN++;}else{S.ans[i]={sel:[],ok:false,at:Date.now()};}
     if(!good)byObj[ITEM(i).o]=(byObj[ITEM(i).o]||0)+1;});
   save();
   const pct=Math.round(ok/run.idx.length*100);
@@ -2205,11 +2257,11 @@ function initMistakes(){
 }
 function mkEl(i,cls){
   const it=ITEM(i), m=S.mist[i];
-  const opt=arr=>arr.length?arr.map(k=>esc(it.opts[k])).join('; '):'(no answer)';
+  const opt=arr=>esc(ansText(it,arr));
   const steps='<span class="steps" title="Right answers on schedule">'+[0,1,2].map(k=>'<i class="'+((m.fixed||k<m.stage)?'on':'')+'"></i>').join('')+'</span>';
   return '<div class="mk '+cls+'"><div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>missed '+m.n+'×</span><span>·</span><span>'+(m.fixed?'fixed':'next '+whenStr(m.due))+'</span>'+steps+'</div>'+
     '<div class="stem">'+it.s+'</div>'+
-    '<dl class="pick"><dt>You picked</dt><dd class="no">'+opt(m.sel||[])+'</dd><dt>Answer</dt><dd class="yes">'+opt(it.c)+'</dd></dl>'+
+    '<dl class="pick"><dt>You picked</dt><dd class="no">'+opt(m.sel||[])+'</dd><dt>Answer</dt><dd class="yes">'+esc(rightText(it))+'</dd></dl>'+
     '<details><summary>Why — the trap</summary><p class="small" style="margin:0">'+it.e+'</p></details>'+
     '<textarea data-i="'+i+'" id="note-'+i+'" placeholder="Your note: why did you pick it, and what will you check next time?" aria-label="Your note">'+esc(m.note||'')+'</textarea>'+
     '<div class="foot">'+(m.fixed?'':'<button type="button" class="lnk" data-act="retry" data-i="'+i+'">Answer it again</button>')+(AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp" data-i="'+i+'">Explain with '+AI_NAME()+'</button>':'')+(CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc" data-i="'+i+'">Discuss in ChatGPT</button>':'')+'<button type="button" class="lnk" data-act="reread" data-i="'+i+'">Reread '+esc(it.o)+'</button>'+(CARDS.some(c=>c.o===it.o)?'<button type="button" class="lnk" data-act="cards" data-i="'+i+'">Drill '+esc(it.o)+' cards</button>':'')+'</div></div>';
@@ -2243,7 +2295,7 @@ let IDX=null;
 function buildIndex(){
   IDX=[];
   CARDS.forEach((c,i)=>IDX.push({k:'Card · '+c.d,t:strip(c.q),x:strip(c.a),type:'card',ref:i}));
-  ITEMS.forEach(it=>IDX.push({k:'Question · '+it.o,t:strip(it.s),x:it.opts.join(' · '),type:'item',ref:it.id}));
+  ITEMS.forEach(it=>IDX.push({k:'Question · '+it.o,t:strip(it.s),x:qPlain(it),type:'item',ref:it.id}));
   myPoints().forEach(p=>{const t=strip(md2html(p.text));IDX.push({k:'My point · '+ptLabel(p),t:t.slice(0,140),x:t,type:'point',ref:p.id});});
   NOTE_PAGES.forEach(pid=>{
     const tpl=$('#tpl-'+pid); if(!tpl)return;
@@ -2602,14 +2654,12 @@ async function aiRun(box,opts,footHtml,onDone){
   box.onclick=ev=>{if(ev.target.closest('[data-ai="settings"]'))openClaudeSettings();};
 }
 function aiExplainItem(it,sel,host,mistakeId){
-  const opt=i=>String.fromCharCode(65+i)+'. '+strip(it.opts[i]);
-  if(PROV()==='connector'){askClaude('Explain practice question '+it.id+' ('+it.o+') a different way than the book. Question: '+strip(it.s)+' Options: '+it.opts.map((o,i)=>opt(i)).join(' / ')+
-    '. Correct: '+it.c.map(opt).join('; ')+'. I chose: '+(sel&&sel.length?sel.map(opt).join('; '):'nothing')+'. First the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.'+
+  if(PROV()==='connector'){askClaude('Use get_question to fetch practice question '+it.id+' with my answer, and explain it a different way than the book: first the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.'+
     (mistakeId?' Then offer to quiz me on a similar question.':''));return;}
   if(!needAi(()=>aiExplainItem(it,sel,host,mistakeId)))return;
   const box=aiBox(host,'Explaining '+it.o);
-  const prompt='Practice question ('+it.o+', '+(it.t==='cata'?'check all that apply':'multiple choice')+'):\n'+strip(it.s)+'\n\nOptions:\n'+it.opts.map((o,i)=>opt(i)).join('\n')+
-    '\n\nCorrect: '+it.c.map(opt).join('; ')+'\nI chose: '+(sel&&sel.length?sel.map(opt).join('; '):'nothing')+
+  const prompt='Practice question ('+it.o+', '+qTypeName(it).toLowerCase()+'):\n'+strip(it.s)+'\n\n'+qPlain(it)+
+    '\n\nCorrect: '+rightText(it)+'\nI answered: '+ansText(it,sel)+
     (it.e?'\n\nThe book explanation (which did not click for me): '+strip(it.e):'')+
     '\n\nExplain it a different way than the book: first the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.';
   aiRun(box,{system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'low',maxTokens:4000},
@@ -2652,7 +2702,7 @@ function openGenerate(preset,done){
     const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(); let notes=$('#genNotes',m).value.trim();
     if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'â€¦</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldnâ€™t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
     if(!obj&&!topic&&!notes){$('#genMsg',m).innerHTML='<div class="aerr">Choose an objective, or give a topic or notes.</div>';return;}
-    const ex=ITEMS.filter(q=>!obj||q.o===obj).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
+    const ex=ITEMS.filter(q=>(!obj||q.o===obj)&&(q.t==='mc'||q.t==='cata')).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
     const prompt='Write '+want+' for the ARE study pack'+(obj?' on objective '+obj+' ('+objTitle(obj)+')':'')+(topic?', topic: '+topic:'')+'.\n'+
       'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:'PA, PPD or PDD as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+
@@ -2831,6 +2881,21 @@ function expandSlash(t){
 
 /* ---------- tools Claude can use on this page ---------- */
 const L=i=>String.fromCharCode(65+i);
+/* a question as the tools show it, for every type, and the student's reply turned back into an answer */
+function qView(q){
+  const v={question_id:q.id,objective:q.o,type:qTypeName(q).toLowerCase(),question:strip(q.s)};
+  if(q.t==='num')Object.assign(v,{answer_format:'a number'+(q.unit?' in '+q.unit:''),correct:numText(q,q.ans),tolerance:+q.tol||0});
+  else if(q.t==='match')Object.assign(v,{statements:q.items.map((x,k)=>(k+1)+'. '+strip(x)),choices:q.opts.map((x,k)=>L(k)+'. '+x),correct:q.c.map((k,i)=>(i+1)+' → '+L(k))});
+  else Object.assign(v,{options:q.opts.map((x,k)=>L(k)+'. '+x),correct:q.c.map(L)});
+  v.explanation=strip(q.e); return v;
+}
+function selFrom(it,choices){
+  choices=(choices||[]).map(x=>String(x).trim());
+  if(it.t==='num'){if(numIn(choices[0])==null)throw new Error('For this question, choices is the number the student gave, e.g. ["400"].');return [choices[0]];}
+  if(it.t==='match'){const s=choices.map(x=>x.toUpperCase().charCodeAt(0)-65);if(s.length!==it.items.length||s.some(k=>!(k>=0&&k<it.opts.length)))throw new Error('For this matching question, choices is one choice letter per statement, in statement order, e.g. ['+it.items.map(()=>'"A"').join(',')+'].');return s;}
+  const s=[...new Set(choices.map(x=>x.toUpperCase().charCodeAt(0)-65).filter(k=>k>=0&&k<it.opts.length))];
+  if(!s.length)throw new Error('choices must be option letters like ["B"].'); return s;
+}
 function toolRating(id,r){
   const c=CARDS.find(x=>x.id===id); if(!c)throw new Error('No flashcard with card_id '+id+'.');
   const s=S.cards[id]||{b:0,n:0,due:0}, now=Date.now(), had=!!S.cards[id];
@@ -2870,14 +2935,13 @@ const CHAT_TOOLS=[
      if(o)l=l.filter(q=>q.o===o); if(d)l=l.filter(q=>q.d===d);
      if(i.which==='unanswered')l=l.filter(q=>!S.ans[q.id]); if(i.which==='missed')l=l.filter(q=>S.ans[q.id]&&!S.ans[q.id].ok);
      if(i.which==='due_mistakes'){const due=mistDue();l=l.filter(q=>due.includes(q.id));}
-     return shuffle(l).slice(0,Math.max(1,Math.min(10,+i.count||3))).map(q=>({question_id:q.id,objective:q.o,type:q.t==='cata'?'check all that apply':'multiple choice',question:strip(q.s),options:q.opts.map((x,k)=>L(k)+'. '+x),correct:q.c.map(L),explanation:strip(q.e)}));},
+     return shuffle(l).slice(0,Math.max(1,Math.min(10,+i.count||3))).map(qView);},
    note:i=>[i.objective||i.division||'any',i.which||''].filter(Boolean).join(' · ')},
   {name:'record_answer',label:'Recorded your answer',description:'Record the student’s answer to a practice question (updates their score and mistake log exactly like the Practice page). Call once per answer.',
-   schema:{type:'object',properties:{question_id:{type:'string'},choices:{type:'array',items:{type:'string'},description:'Letters the student chose, e.g. ["B"]'}},required:['question_id','choices'],additionalProperties:false},
+   schema:{type:'object',properties:{question_id:{type:'string'},choices:{type:'array',items:{type:'string'},description:'The student’s answer: option letters for multiple choice and check-all (e.g. ["B"] or ["A","C"]); the number for fill-in (e.g. ["400"]); one choice letter per statement, in order, for matching (e.g. ["B","A","C"])'}},required:['question_id','choices'],additionalProperties:false},
    run:i=>{const it=ITEM(String(i.question_id));if(!it)throw new Error('No question with question_id '+i.question_id+'.');
-     const sel=[...new Set((i.choices||[]).map(x=>String(x).trim().toUpperCase().charCodeAt(0)-65).filter(k=>k>=0&&k<it.opts.length))];
-     if(!sel.length)throw new Error('choices must be option letters like ["B"].');
-     const info=record(it.id,sel);return {correct:itemOk(it,sel),correct_answer:it.c.map(L),note:info?strip(info.msg):''};},
+     const sel=selFrom(it,i.choices);
+     const info=record(it.id,sel);return {correct:itemOk(it,sel),correct_answer:rightText(it),note:info?strip(info.msg):''};},
    note:i=>String(i.question_id||'')+' → '+(i.choices||[]).join(',')},
   {name:'due_flashcards',label:'Picked flashcards',description:'Flashcards that are due now (weakest first), then new ones. Show the question, let the student answer, then reveal.',
    schema:{type:'object',properties:{count:{type:'integer'},objective:{type:'string'}},required:['count'],additionalProperties:false},

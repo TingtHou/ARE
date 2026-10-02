@@ -108,6 +108,21 @@ function expandSlash(t){
 
 /* ---------- tools Claude can use on this page ---------- */
 const L=i=>String.fromCharCode(65+i);
+/* a question as the tools show it, for every type, and the student's reply turned back into an answer */
+function qView(q){
+  const v={question_id:q.id,objective:q.o,type:qTypeName(q).toLowerCase(),question:strip(q.s)};
+  if(q.t==='num')Object.assign(v,{answer_format:'a number'+(q.unit?' in '+q.unit:''),correct:numText(q,q.ans),tolerance:+q.tol||0});
+  else if(q.t==='match')Object.assign(v,{statements:q.items.map((x,k)=>(k+1)+'. '+strip(x)),choices:q.opts.map((x,k)=>L(k)+'. '+x),correct:q.c.map((k,i)=>(i+1)+' → '+L(k))});
+  else Object.assign(v,{options:q.opts.map((x,k)=>L(k)+'. '+x),correct:q.c.map(L)});
+  v.explanation=strip(q.e); return v;
+}
+function selFrom(it,choices){
+  choices=(choices||[]).map(x=>String(x).trim());
+  if(it.t==='num'){if(numIn(choices[0])==null)throw new Error('For this question, choices is the number the student gave, e.g. ["400"].');return [choices[0]];}
+  if(it.t==='match'){const s=choices.map(x=>x.toUpperCase().charCodeAt(0)-65);if(s.length!==it.items.length||s.some(k=>!(k>=0&&k<it.opts.length)))throw new Error('For this matching question, choices is one choice letter per statement, in statement order, e.g. ['+it.items.map(()=>'"A"').join(',')+'].');return s;}
+  const s=[...new Set(choices.map(x=>x.toUpperCase().charCodeAt(0)-65).filter(k=>k>=0&&k<it.opts.length))];
+  if(!s.length)throw new Error('choices must be option letters like ["B"].'); return s;
+}
 function toolRating(id,r){
   const c=CARDS.find(x=>x.id===id); if(!c)throw new Error('No flashcard with card_id '+id+'.');
   const s=S.cards[id]||{b:0,n:0,due:0}, now=Date.now(), had=!!S.cards[id];
@@ -147,14 +162,13 @@ const CHAT_TOOLS=[
      if(o)l=l.filter(q=>q.o===o); if(d)l=l.filter(q=>q.d===d);
      if(i.which==='unanswered')l=l.filter(q=>!S.ans[q.id]); if(i.which==='missed')l=l.filter(q=>S.ans[q.id]&&!S.ans[q.id].ok);
      if(i.which==='due_mistakes'){const due=mistDue();l=l.filter(q=>due.includes(q.id));}
-     return shuffle(l).slice(0,Math.max(1,Math.min(10,+i.count||3))).map(q=>({question_id:q.id,objective:q.o,type:q.t==='cata'?'check all that apply':'multiple choice',question:strip(q.s),options:q.opts.map((x,k)=>L(k)+'. '+x),correct:q.c.map(L),explanation:strip(q.e)}));},
+     return shuffle(l).slice(0,Math.max(1,Math.min(10,+i.count||3))).map(qView);},
    note:i=>[i.objective||i.division||'any',i.which||''].filter(Boolean).join(' · ')},
   {name:'record_answer',label:'Recorded your answer',description:'Record the student’s answer to a practice question (updates their score and mistake log exactly like the Practice page). Call once per answer.',
-   schema:{type:'object',properties:{question_id:{type:'string'},choices:{type:'array',items:{type:'string'},description:'Letters the student chose, e.g. ["B"]'}},required:['question_id','choices'],additionalProperties:false},
+   schema:{type:'object',properties:{question_id:{type:'string'},choices:{type:'array',items:{type:'string'},description:'The student’s answer: option letters for multiple choice and check-all (e.g. ["B"] or ["A","C"]); the number for fill-in (e.g. ["400"]); one choice letter per statement, in order, for matching (e.g. ["B","A","C"])'}},required:['question_id','choices'],additionalProperties:false},
    run:i=>{const it=ITEM(String(i.question_id));if(!it)throw new Error('No question with question_id '+i.question_id+'.');
-     const sel=[...new Set((i.choices||[]).map(x=>String(x).trim().toUpperCase().charCodeAt(0)-65).filter(k=>k>=0&&k<it.opts.length))];
-     if(!sel.length)throw new Error('choices must be option letters like ["B"].');
-     const info=record(it.id,sel);return {correct:itemOk(it,sel),correct_answer:it.c.map(L),note:info?strip(info.msg):''};},
+     const sel=selFrom(it,i.choices);
+     const info=record(it.id,sel);return {correct:itemOk(it,sel),correct_answer:rightText(it),note:info?strip(info.msg):''};},
    note:i=>String(i.question_id||'')+' → '+(i.choices||[]).join(',')},
   {name:'due_flashcards',label:'Picked flashcards',description:'Flashcards that are due now (weakest first), then new ones. Show the question, let the student answer, then reveal.',
    schema:{type:'object',properties:{count:{type:'integer'},objective:{type:'string'}},required:['count'],additionalProperties:false},

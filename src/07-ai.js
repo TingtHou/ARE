@@ -304,14 +304,12 @@ async function aiRun(box,opts,footHtml,onDone){
   box.onclick=ev=>{if(ev.target.closest('[data-ai="settings"]'))openClaudeSettings();};
 }
 function aiExplainItem(it,sel,host,mistakeId){
-  const opt=i=>String.fromCharCode(65+i)+'. '+strip(it.opts[i]);
-  if(PROV()==='connector'){askClaude('Explain practice question '+it.id+' ('+it.o+') a different way than the book. Question: '+strip(it.s)+' Options: '+it.opts.map((o,i)=>opt(i)).join(' / ')+
-    '. Correct: '+it.c.map(opt).join('; ')+'. I chose: '+(sel&&sel.length?sel.map(opt).join('; '):'nothing')+'. First the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.'+
+  if(PROV()==='connector'){askClaude('Use get_question to fetch practice question '+it.id+' with my answer, and explain it a different way than the book: first the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.'+
     (mistakeId?' Then offer to quiz me on a similar question.':''));return;}
   if(!needAi(()=>aiExplainItem(it,sel,host,mistakeId)))return;
   const box=aiBox(host,'Explaining '+it.o);
-  const prompt='Practice question ('+it.o+', '+(it.t==='cata'?'check all that apply':'multiple choice')+'):\n'+strip(it.s)+'\n\nOptions:\n'+it.opts.map((o,i)=>opt(i)).join('\n')+
-    '\n\nCorrect: '+it.c.map(opt).join('; ')+'\nI chose: '+(sel&&sel.length?sel.map(opt).join('; '):'nothing')+
+  const prompt='Practice question ('+it.o+', '+qTypeName(it).toLowerCase()+'):\n'+strip(it.s)+'\n\n'+qPlain(it)+
+    '\n\nCorrect: '+rightText(it)+'\nI answered: '+ansText(it,sel)+
     (it.e?'\n\nThe book explanation (which did not click for me): '+strip(it.e):'')+
     '\n\nExplain it a different way than the book: first the one rule that decides it, then why my choice is tempting but wrong, then a quick way to remember it. Under 180 words.';
   aiRun(box,{system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'low',maxTokens:4000},
@@ -354,7 +352,7 @@ function openGenerate(preset,done){
     const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(); let notes=$('#genNotes',m).value.trim();
     if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'â€¦</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldnâ€™t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
     if(!obj&&!topic&&!notes){$('#genMsg',m).innerHTML='<div class="aerr">Choose an objective, or give a topic or notes.</div>';return;}
-    const ex=ITEMS.filter(q=>!obj||q.o===obj).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
+    const ex=ITEMS.filter(q=>(!obj||q.o===obj)&&(q.t==='mc'||q.t==='cata')).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
     const prompt='Write '+want+' for the ARE study pack'+(obj?' on objective '+obj+' ('+objTitle(obj)+')':'')+(topic?', topic: '+topic:'')+'.\n'+
       'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:'PA, PPD or PDD as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+

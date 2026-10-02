@@ -568,7 +568,7 @@ Resources:
             const A = JSON.parse(JSON.stringify(ctx.ARE || {}));
             const M = {
               cards: (A.cards || []).filter(x => x && x.id != null && x.q && x.a).map(x => Object.assign({}, x, { id: String(x.id), d: x.d || 'Other', o: x.o || '—' })),
-              items: (A.questions || []).filter(x => x && x.id != null && x.s && Array.isArray(x.opts) && Array.isArray(x.c)).map(x => Object.assign({}, x, { id: String(x.id), t: x.t === 'cata' ? 'cata' : 'mc', e: x.e || '' })),
+              items: (A.questions || []).filter(x => x && x.id != null && x.s).map(x => Object.assign({}, x, { id: String(x.id), t: QTYPES.includes(x.t) ? x.t : 'mc', e: x.e || '' })).filter(qValid),
               plan: (A.plan || []).slice().sort((a, b) => a.w - b.w),
               exams: (A.exams || []).map(e => ({ d: e.d, n: e.name || e.d, date: normD(e.date) })),
               heads: [], rows: [], objt: {}
@@ -599,13 +599,13 @@ Resources:
           const blankState = () => ({ v: 2, at: 0, cards: {}, ans: {}, plan: {}, passed: {}, log: {}, mist: {}, cardMiss: {}, deck: '', fcMode: 'due', qdiv: '', qmode: 'all' });
           function study(M, S) {
             const C = S.custom || {}, cc = C.cards || {}, ci = C.items || {};
-            const CK = ['d', 'o', 'q', 'a', 'qraw', 'araw'], IK = ['d', 'o', 't', 's', 'opts', 'c', 'e', 'sraw', 'eraw'];
+            const CK = ['d', 'o', 'q', 'a', 'qraw', 'araw'], IK = ['d', 'o', 't', 's', 'opts', 'c', 'e', 'sraw', 'eraw', 'ans', 'tol', 'unit', 'items'];
             const pick = (o, ks) => { const r = {}; ks.forEach(k => { if (o[k] != null) r[k] = o[k]; }); return r; };
             const cards = []; M.cards.forEach(c => { const o = cc[c.id]; if (o && o.hidden) return; cards.push(o ? Object.assign({}, c, pick(o, CK)) : c); });
             Object.keys(cc).filter(k => !M.cards.some(b => b.id === k) && !cc[k].hidden && cc[k].q && cc[k].a).forEach(k => cards.push(Object.assign({ o: '—', d: 'My cards' }, pick(cc[k], CK), { id: k, mine: true })));
             let items = []; M.items.forEach(q => { const o = ci[q.id]; if (o && o.hidden) return; items.push(o ? Object.assign({}, q, pick(o, IK)) : q); });
             Object.keys(ci).filter(k => !M.items.some(b => b.id === k) && !ci[k].hidden).forEach(k => items.push(Object.assign({ t: 'mc', e: '' }, pick(ci[k], IK), { id: k, mine: true })));
-            items = items.filter(q => q.s && Array.isArray(q.opts) && q.opts.length >= 2 && Array.isArray(q.c) && q.c.length && q.c.every(k => k >= 0 && k < q.opts.length));
+            items = items.filter(qValid);
             const map = {}; items.forEach(it => { map[it.id] = it; });
             const cp = S.customPlan, own = !!(cp && Array.isArray(cp.weeks) && cp.weeks.length);
             const plan = own ? cp.weeks : M.plan;
@@ -629,7 +629,34 @@ Resources:
             const cut = dsOf(Date.now() - 90 * DAY); Object.keys(S.log).forEach(d => { if (d < cut) delete S.log[d]; });
           }
           const mistDue = X => { const now = Date.now(); return Object.keys(X.S.mist).filter(i => { const m = X.S.mist[i]; return !m.fixed && m.due <= now && X.item(i); }); };
-          const itemOk = (it, sel) => sel.length === it.c.length && sel.every(i => it.c.includes(i));
+          /* question types, as on the site: mc, cata, num (fill in a number), match (one choice per statement) */
+          const QTYPES = ['mc', 'cata', 'num', 'match'];
+          const okIdx = (q, arr) => Array.isArray(arr) && arr.every(k => k >= 0 && k < q.opts.length);
+          const qValid = q => !!(q && q.s && (q.t === 'num' ? isFinite(parseFloat(q.ans)) : q.t === 'match' ? Array.isArray(q.items) && q.items.length >= 2 && Array.isArray(q.opts) && q.opts.length >= 2 && Array.isArray(q.c) && q.c.length === q.items.length && okIdx(q, q.c) : Array.isArray(q.opts) && q.opts.length >= 2 && Array.isArray(q.c) && q.c.length && okIdx(q, q.c)));
+          const numIn = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[$,\s]/g, '')); return isFinite(n) ? n : null; };
+          const itemOk = (it, sel) => { sel = sel || [];
+            if (it.t === 'num') { const v = numIn(sel[0]); return v != null && Math.abs(v - parseFloat(it.ans)) <= (+it.tol || 0) + 1e-9; }
+            if (it.t === 'match') return sel.length === it.c.length && it.c.every((k, i) => +sel[i] === k);
+            return sel.length === it.c.length && sel.every(i => it.c.includes(i)); };
+          const qType = q => ({ cata: 'check all that apply', num: 'fill in the number', match: 'drag and drop / matching' })[q.t] || 'multiple choice';
+          const numText = (q, v) => String(v) + (q.unit ? ' ' + q.unit : '');
+          // a question for the tools: what the student sees, plus (when withAnswer) the correct answer
+          function qView(q, withAnswer) {
+            const v = { question_id: q.id, objective: q.o, type: qType(q), question: strip(q.s) };
+            if (q.t === 'num') { v.answer_format = 'a number' + (q.unit ? ' in ' + q.unit : ''); if (withAnswer) Object.assign(v, { correct: numText(q, q.ans), tolerance: +q.tol || 0 }); }
+            else if (q.t === 'match') { Object.assign(v, { statements: q.items.map((x, k) => (k + 1) + '. ' + strip(x)), choices: q.opts.map((x, k) => L(k) + '. ' + strip(x)) }); if (withAnswer) v.correct = q.c.map((k, i) => (i + 1) + ' → ' + L(k)); }
+            else { v.options = q.opts.map((x, k) => L(k) + '. ' + strip(x)); if (withAnswer) v.correct = q.c.map(L); }
+            return v;
+          }
+          // an answer in the same words: letters, the number, or "statement → letter"
+          const selText = (q, sel) => { sel = sel || []; return q.t === 'num' ? (sel.length ? String(sel[0]) : '') : q.t === 'match' ? sel.map((k, i) => (i + 1) + ' → ' + (+k >= 0 ? L(+k) : '—')) : sel.map(L); };
+          function selFrom(it, choices) {
+            choices = (choices || []).map(x => String(x).trim());
+            if (it.t === 'num') { if (numIn(choices[0]) == null) throw new Error('For this question, choices is the number the student gave, e.g. ["400"].'); return [choices[0]]; }
+            if (it.t === 'match') { const s = choices.map(x => x.toUpperCase().charCodeAt(0) - 65); if (s.length !== it.items.length || s.some(k => !(k >= 0 && k < it.opts.length))) throw new Error('For this matching question, choices is one choice letter per statement, in statement order (' + it.items.length + ' letters).'); return s; }
+            const s = [...new Set(choices.map(x => x.toUpperCase().charCodeAt(0) - 65).filter(k => k >= 0 && k < it.opts.length))];
+            if (!s.length) throw new Error('choices must be option letters like ["B"].'); return s;
+          }
           function queueObjCards(X, o) {
             if (!o || o === '—') return 0;
             const now = Date.now(); let n = 0;
@@ -662,7 +689,7 @@ Resources:
           function buildIndex(X) {
             const I = [];
             X.cards.forEach(c => I.push({ k: 'Card · ' + c.d, t: strip(c.q), x: strip(c.a) }));
-            X.items.forEach(it => I.push({ k: 'Question · ' + it.o, t: strip(it.s), x: it.opts.map(strip).join(' · ') }));
+            X.items.forEach(it => I.push({ k: 'Question · ' + it.o, t: strip(it.s), x: it.t === 'num' ? '' : (it.items || []).map(strip).concat(it.opts.map(strip)).join(' · ') }));
             X.points.forEach(p => { const t = strip(md2html(p.text)); I.push({ k: 'My point · ' + (p.div === 'GEN' ? 'General' : (p.obj ? p.div + ' ' + p.obj : p.div)), t: t.slice(0, 140), x: t }); });
             X.M.heads.forEach(h => I.push({ k: 'Notes · ' + NOTE_PAGES[h.page], t: (h.objs.length ? h.objs.join(', ') + ' — ' : '') + h.title, x: h.text.replace(/\s+/g, ' ') }));
             X.M.rows.forEach(r => I.push({ k: (r.page === 'numbers' ? 'Number' : 'Table') + ' · ' + NOTE_PAGES[r.page], t: r.cells[0], x: r.cells.slice(1).join(' · '), row: 1 }));
@@ -870,24 +897,24 @@ Resources:
                 if (i.which === 'unanswered') l = l.filter(q => !X.S.ans[q.id]); if (i.which === 'missed') l = l.filter(q => X.S.ans[q.id] && !X.S.ans[q.id].ok);
                 if (i.which === 'due_mistakes') { const due = mistDue(X); l = l.filter(q => due.includes(q.id)); }
                 if (!l.length) return 'No questions match. Try which: "any" or a wider objective.';
-                return shuffle(l).slice(0, Math.max(1, Math.min(10, +i.count || 3))).map(q => ({ question_id: q.id, objective: q.o, type: q.t === 'cata' ? 'check all that apply' : 'multiple choice', question: strip(q.s), options: q.opts.map((x, k) => L(k) + '. ' + strip(x)), correct: q.c.map(L), explanation: strip(q.e) })); } },
+                return shuffle(l).slice(0, Math.max(1, Math.min(10, +i.count || 3))).map(q => Object.assign(qView(q, true), { explanation: strip(q.e) })); } },
             { name: 'record_answer', title: 'Record an answer', annotations: RW, write: true, description: 'Record the student’s answer to a practice question. It updates their score and mistake log exactly like the Practice page. Call once per answer.',
-              inputSchema: OBJ({ question_id: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Letters the student chose, e.g. ["B"]' } }, ['question_id', 'choices']),
+              inputSchema: OBJ({ question_id: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'The student’s answer: option letters for multiple choice and check-all (e.g. ["B"] or ["A","C"]); the number for fill-in (e.g. ["400"]); one choice letter per statement, in statement order, for matching (e.g. ["B","A","C"])' } }, ['question_id', 'choices']),
               run: (X, i) => { const it = X.item(String(i.question_id)); if (!it) throw new Error('No question with question_id ' + i.question_id + '.');
-                const sel = [...new Set((i.choices || []).map(x => String(x).trim().toUpperCase().charCodeAt(0) - 65).filter(k => k >= 0 && k < it.opts.length))];
-                if (!sel.length) throw new Error('choices must be option letters like ["B"].');
-                const note = record(X, it.id, sel); return { correct: itemOk(it, sel), correct_answer: it.c.map(L), note }; } },
+                const sel = selFrom(it, i.choices);
+                const note = record(X, it.id, sel); return { correct: itemOk(it, sel), correct_answer: qView(it, true).correct, note }; } },
             { name: 'get_question', title: 'Get a question by ID', annotations: RO, description: 'One practice question by its question_id (e.g. "q12", or "u…" for the student’s own): the question, lettered options, any images, the student’s own last answer and mistake history, the correct answer and the explanation. Use it when the student asks to discuss a question they got wrong: start from their reasoning, explain the rule that decides it and why their choice was tempting, then offer a similar question.',
               inputSchema: OBJ({ question_id: { type: 'string', description: 'e.g. "q12"' } }, ['question_id']),
               run: (X, i) => { const id = String(i.question_id || '').trim(), it = X.item(id);
                 if (!it) throw new Error('No question with question_id "' + id + '" for this student.');
                 const imgs = html => [...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*"([^"]+)"[^>]*>/gi)].map(m => { try { return new URL(m[1], SITE + '/').href; } catch (e) { return null; } }).filter(Boolean);
                 const a = X.S.ans[id], m = X.S.mist[id];
-                return { question_id: id, objective: it.o, objective_title: X.objTitle(it.o), type: it.t === 'cata' ? 'check all that apply' : 'multiple choice', own_question: !!it.mine,
-                  question: strip(it.s), options: it.opts.map((x, k) => L(k) + '. ' + strip(x)), images: imgs(it.s).concat(...it.opts.map(imgs), imgs(it.e)),
-                  my_answer: a ? { choices: a.sel.map(L), correct: a.ok, answered: dsOf(a.at) } : null,
-                  mistake_log: m ? { times_missed: m.n, choices_last_time: (m.sel || []).map(L), fixed: !!m.fixed, next_retry: m.fixed ? null : whenStr(m.due), my_note: m.note || '' } : null,
-                  correct_answer: it.c.map(L), explanation: strip(it.e) }; } },
+                const v = qView(it, true), correct = v.correct; delete v.correct; delete v.tolerance;
+                return Object.assign(v, { objective_title: X.objTitle(it.o), own_question: !!it.mine,
+                  images: imgs(it.s).concat(...(it.opts || []).map(imgs), ...(it.items || []).map(imgs), imgs(it.e)),
+                  my_answer: a ? { answer: selText(it, a.sel), correct: a.ok, answered: dsOf(a.at) } : null,
+                  mistake_log: m ? { times_missed: m.n, answer_last_time: selText(it, m.sel), fixed: !!m.fixed, next_retry: m.fixed ? null : whenStr(m.due), my_note: m.note || '' } : null,
+                  correct_answer: correct, tolerance: it.t === 'num' ? +it.tol || 0 : undefined, explanation: strip(it.e) }); } },
             { name: 'get_profile', title: 'Who is signed in', annotations: RO, meta: { 'openai/profile': true }, description: 'The signed-in study account: a stable opaque id.',
               inputSchema: OBJ(), run: X => ({ id: 'are_' + crypto.createHash('sha256').update(X.sub).digest('hex').slice(0, 24) }) },
             { name: 'mistakes', title: 'List mistakes', annotations: RO, description: 'The student’s mistake log: questions they got wrong, what they chose, the right answer, how often they missed it, when it is due again and their own note. Use to explain mistakes or re-ask them.',
@@ -895,7 +922,7 @@ Resources:
               run: (X, i) => { const w = i.which || 'due', due = mistDue(X);
                 const ids = Object.keys(X.S.mist).filter(id => X.item(id) && (w === 'due' ? due.includes(id) : w === 'fixed' ? X.S.mist[id].fixed : !X.S.mist[id].fixed));
                 return ids.sort((a, b) => X.S.mist[b].n - X.S.mist[a].n).slice(0, Math.max(1, Math.min(20, +i.count || 10))).map(id => { const m = X.S.mist[id], it = X.item(id);
-                  return { question_id: id, objective: it.o, question: strip(it.s), options: it.opts.map((x, k) => L(k) + '. ' + strip(x)), last_choice: (m.sel || []).map(L), correct: it.c.map(L), times_missed: m.n, fixed: !!m.fixed, due: m.fixed ? null : whenStr(m.due), note: m.note || '', explanation: strip(it.e) }; }); } },
+                  return { ...qView(it, true), last_answer: selText(it, m.sel), times_missed: m.n, fixed: !!m.fixed, due: m.fixed ? null : whenStr(m.due), note: m.note || '', explanation: strip(it.e) }; }); } },
             { name: 'due_flashcards', title: 'Pick flashcards', annotations: RO, description: 'Flashcards that are due now (weakest first), then new ones. Show the question, let the student answer, then reveal.',
               inputSchema: OBJ({ count: { type: 'integer', minimum: 1, maximum: 15 }, objective: { type: 'string' } }, ['count']),
               run: (X, i) => { const now = Date.now(); let p = X.cards.slice(); const { full } = objIn(i.objective); if (full) p = p.filter(c => full.includes(' ') ? c.o === full : odiv(c.o) === full);
