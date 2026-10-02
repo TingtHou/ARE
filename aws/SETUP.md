@@ -151,7 +151,7 @@ Nothing beyond the stack update:
 
 # My library and my agents
 
-**My library** (My material page) holds each person's own documents: PDF, Word (.docx), text and Markdown. The browser reads the text, cuts it into passages that remember their page, and uploads them to the person's account. The original file isn't kept. When you chat, an agent finds the best passages for each question and answers from them, citing the page. **Make cards & questions** drafts flashcards and practice questions from a document; you review them, and they're added to My material, where Practice records your answers.
+**My library** (My material page) holds each person's own documents: PDF, Word (.docx), text and Markdown. The browser reads the text, cuts it into passages that remember their page, and saves them to the person's account. The **original file** is kept as well, in a private S3 bucket (stack output `FilesBucket`), so **Open** shows it on any device. Files the AI can't read, such as scanned PDFs, images or slides, are kept as files only. Up to 100 MB per file and 3 GB per person. S3 costs about $0.023 per GB a month, so a few cents for a shelf of textbooks. When you chat, an agent finds the best passages for each question and answers from them, citing the page. **Make cards & questions** drafts flashcards and practice questions from a document; you review them, and they're added to My material, where Practice records your answers.
 
 **My agents** are study helpers you make: a name, instructions (you can paste a custom GPT's instructions), and which documents to answer from. Pick one at the bottom of the chat panel. The Claude connector can use them too: ask Claude to "use my Structures examiner agent".
 

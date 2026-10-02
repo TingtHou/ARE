@@ -2954,6 +2954,18 @@ async function readFile(file,onProg){
   if(['txt','md','markdown','csv'].includes(ext))return {type:ext,pages:[{p:null,text:await file.text()}],count:null};
   throw new Error('Can’t read .'+ext+' files. Use PDF, Word (.docx), text or Markdown.');
 }
+/* upload the original to S3 with its signed link (XHR, for progress); the signed size must match the file */
+function putFile(url,file,onProg){
+  return new Promise((ok,no)=>{const x=new XMLHttpRequest();x.open('PUT',url);
+    x.upload.onprogress=e=>{if(e.lengthComputable&&onProg)onProg(e.loaded/e.total);};
+    x.onload=()=>x.status>=200&&x.status<300?ok():no(new Error('the file store answered '+x.status));
+    x.onerror=()=>no(new Error('couldn’t reach the file store'));x.send(file);});
+}
+async function openOriginal(d){
+  const w=window.open('','_blank');   // opened now, while the click counts, so pop-up blockers allow it
+  try{const j=await libApi('/library/file?id='+encodeURIComponent(d.id));if(w){w.opener=null;w.location.href=j.url;}else location.href=j.url;}
+  catch(e){if(w)w.close();toast(e.message);}
+}
 /* passages of up to ~1,400 characters that never cross a page, so every passage keeps its page number */
 function chunkPages(pages){
   const out=[], MAX=1400;
@@ -2975,24 +2987,37 @@ async function libUpload(files,box){
     try{
       if(file.size>60e6)throw new Error(file.name+' is larger than 60 MB.');
       LIB.busy='Reading '+file.name+'…'; paintLibrary(box);
-      const r=await readFile(file,f=>{LIB.busy='Reading '+file.name+'… '+Math.round(f*100)+'%';const s=$('#libBusy');if(s)s.textContent=LIB.busy;});
+      let r;
+      try{r=await readFile(file,f=>{LIB.busy='Reading '+file.name+'… '+Math.round(f*100)+'%';const s=$('#libBusy');if(s)s.textContent=LIB.busy;});}
+      catch(e){if(!/^Can’t read/.test(e.message))throw e;r={type:(file.name.match(/\.([a-z0-9]+)$/i)||['','file'])[1].toLowerCase().slice(0,10),pages:[],count:null};}   // other kinds of file are kept as files only
       const chunks=chunkPages(r.pages), chars=chunks.reduce((n,c)=>n+c.t.length,0);
-      if(!chars)throw new Error(file.name+' has no text the site can read. If it’s a scanned PDF (pictures of pages), it needs text recognition (OCR) first.');
       const thin=r.type==='pdf'&&r.count>2&&chars/r.count<150;
       const parts=[]; let cur=[], size=0;
       chunks.forEach(c=>{const s=JSON.stringify(c).length;if(cur.length&&size+s>240000){parts.push(cur);cur=[];size=0;}cur.push(c);size+=s;}); if(cur.length)parts.push(cur);
+      if(!parts.length)parts.push([]);
       if(parts.length>80)throw new Error(file.name+' is too long to add. Split it into smaller files.');
       const id='d-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+      const busy=t=>{LIB.busy=t;const s=$('#libBusy');if(s)s.textContent=t;};
+      // 1. the original file, straight to the private file store
+      let kept=false, why='';
+      try{const u=await libApi('/library/file-url',{method:'POST',body:JSON.stringify({id,name:file.name,size:file.size})});
+        await putFile(u.url,file,f=>busy('Saving the original of '+file.name+'… '+Math.round(f*100)+'%')); kept=true;}
+      catch(e){why=e.message||String(e);}
+      if(!chars&&!kept)throw new Error(file.name+' has no text the site can read, and the original couldn’t be saved ('+why+'). If it’s a scanned PDF, it needs text recognition (OCR) first.');
+      // 2. the text, in parts
       for(let i=0;i<parts.length;i++){
-        LIB.busy='Uploading '+file.name+'… '+Math.round(i/parts.length*100)+'%'; const s=$('#libBusy'); if(s)s.textContent=LIB.busy;
-        await libApi('/library/upload',{method:'POST',body:JSON.stringify({id,name:file.name,type:r.type,pages:r.count,chars,chunkCount:chunks.length,part:i,parts:parts.length,chunks:parts[i]})});
+        busy('Saving the text of '+file.name+'… '+Math.round(i/parts.length*100)+'%');
+        await libApi('/library/upload',{method:'POST',body:JSON.stringify({id,name:file.name,type:r.type,pages:r.count,chars,chunkCount:chunks.length,part:i,parts:parts.length,chunks:parts[i],file:kept?{type:file.type||''}:null})});
       }
-      toast('Added '+file.name+(thin?' · some pages had little text (scanned?)':''));
-      if(thin)LIB.err=file.name+': some pages had very little text. If parts are scanned images, those parts can’t be searched.';
+      toast('Added '+file.name+(chars?'':' · file only, no searchable text')+(thin&&chars?' · some pages had little text (scanned?)':''));
+      if(!chars)LIB.err=file.name+' was saved so you can open it, but it has no text the AI can read (probably scanned pages). Text recognition (OCR) would make it searchable.';
+      else if(thin)LIB.err=file.name+': some pages had very little text. If parts are scanned images, those parts can’t be searched.';
+      if(!kept&&chars)LIB.err=(LIB.err?LIB.err+' ':'')+file.name+': the text was saved, but not the original file ('+why+').';
     }catch(e){LIB.err=e.message||String(e);}
   }
   LIB.busy=''; await libLoad(); paintLibrary(box); paintAgents($('#agBox'));
 }
+const mb=n=>n>=1e6?(n/1e6).toFixed(n>=1e8?0:1)+' MB':Math.max(1,Math.round(n/1e3))+' KB';
 const kb=n=>n>=1e6?(n/1e6).toFixed(1)+' M':n>=1e3?Math.round(n/1e3)+' K':String(n);
 function paintLibrary(box){
   box=box||$('#libBox'); if(!box)return;
@@ -3000,19 +3025,21 @@ function paintLibrary(box){
   if(!AUTH_ON){box.innerHTML=head+'<p class="small" style="color:var(--ink-3)">Uploading documents works on the study website, signed in to your account.</p>';return;}
   if(LIB.docs===null&&!LIB.err){box.innerHTML=head+'<p class="small">Loading your documents…</p>';libLoad().then(()=>paintLibrary(box));return;}
   const docs=(LIB.docs||[]).slice().sort((a,b)=>b.at-a.at);
-  box.innerHTML=head+'<p class="small">Upload your own books, notes and handouts (PDF, Word, text). The AI reads them to answer your questions, quiz you, and draft cards and questions, and cites the page. Only you can see them. The site keeps the text, not the file.</p>'+
-    '<div class="libdrop" id="libDrop"><button type="button" class="btn pri" data-lib="pick"'+(LIB.busy?' disabled':'')+'>Upload documents</button><span class="small">or drop files here · PDF, .docx, .txt, .md</span><input type="file" id="libFile" multiple accept="'+LIB_TYPES+'" hidden></div>'+
+  box.innerHTML=head+'<p class="small">Upload your own books, notes and handouts (PDF, Word, text). The AI reads them to answer your questions, quiz you, and draft cards and questions, and cites the page. The original file is kept too, so you can open it on any device. Only you can see them.</p>'+
+    '<div class="libdrop" id="libDrop"><button type="button" class="btn pri" data-lib="pick"'+(LIB.busy?' disabled':'')+'>Upload documents</button><span class="small">or drop files here · PDF, .docx, .txt, .md are read by the AI; other files are kept to open</span><input type="file" id="libFile" multiple accept="'+LIB_TYPES+',image/*,.pptx,.xlsx" hidden></div>'+
     (LIB.busy?'<p class="small" id="libBusy">'+esc(LIB.busy)+'</p>':'')+(LIB.err?'<div class="aerr">'+esc(LIB.err)+' <button type="button" class="lnk" data-lib="clearerr">OK</button></div>':'')+
-    (docs.length?docs.map(d=>'<div class="mrow"><span class="obj">'+esc((d.type||'doc').toUpperCase())+'</span><span class="mt">'+esc(d.name)+' <span style="color:var(--ink-3)">· '+(d.pages?d.pages+' pages · ':'')+kb(d.chars||0)+' characters'+(d.done?'':' · upload unfinished')+'</span></span><span class="mb">'+
-      (d.done?'<button type="button" class="lnk" data-libask="'+esc(d.id)+'">Ask about it</button><button type="button" class="lnk" data-libgen="'+esc(d.id)+'">Make cards &amp; questions</button>':'')+'<button type="button" class="lnk" data-libdel="'+esc(d.id)+'">Delete</button></span></div>').join(''):'<p class="small" style="color:var(--ink-3)">No documents yet.</p>')+
+    (docs.length?docs.map(d=>'<div class="mrow"><span class="obj">'+esc((d.type||'doc').toUpperCase())+'</span><span class="mt">'+esc(d.name)+' <span style="color:var(--ink-3)">· '+(d.pages?d.pages+' pages · ':'')+(d.chars?kb(d.chars)+' characters':'no searchable text')+(d.file?' · '+mb(d.file.size)+' file':' · text only')+(d.done?'':' · upload unfinished')+'</span></span><span class="mb">'+
+      (d.file?'<button type="button" class="lnk" data-libopen="'+esc(d.id)+'">Open</button>':'')+
+      (d.done&&d.chars?'<button type="button" class="lnk" data-libask="'+esc(d.id)+'">Ask about it</button><button type="button" class="lnk" data-libgen="'+esc(d.id)+'">Make cards &amp; questions</button>':'')+'<button type="button" class="lnk" data-libdel="'+esc(d.id)+'">Delete</button></span></div>').join(''):'<p class="small" style="color:var(--ink-3)">No documents yet.</p>')+
     (docs.length?'<p class="small" style="color:var(--ink-3)">Using '+kb(LIB.used)+' of '+kb(LIB.limit)+' characters.</p>':'');
   const inp=$('#libFile',box), drop=$('#libDrop',box);
   inp.onchange=()=>{if(inp.files.length)libUpload([...inp.files],box);};
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('on');}; drop.ondragleave=()=>drop.classList.remove('on');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('on');if(!LIB.busy&&e.dataTransfer.files.length)libUpload([...e.dataTransfer.files],box);};
   box.onclick=async e=>{
-    const t=e.target.closest('[data-lib],[data-libask],[data-libgen],[data-libdel],[data-libdelyes]'); if(!t)return;
+    const t=e.target.closest('[data-lib],[data-libask],[data-libgen],[data-libdel],[data-libdelyes],[data-libopen]'); if(!t)return;
     const doc=id=>(LIB.docs||[]).find(d=>d.id===id);
+    if(t.dataset.libopen){const d=doc(t.dataset.libopen);if(d)openOriginal(d);return;}
     if(t.dataset.lib==='pick')inp.click();
     if(t.dataset.lib==='clearerr'){LIB.err='';paintLibrary(box);}
     if(t.dataset.libask){const d=doc(t.dataset.libask);if(d)chatAboutDoc(d);}

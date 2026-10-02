@@ -244,6 +244,38 @@ const RO = { readOnlyHint: true, openWorldHint: false }, RW = { readOnlyHint: fa
    lib#<sub>#meta            { docs: [{ id, name, type, pages, chars, chunks, parts, at, done }] }
    lib#<sub>#<doc>#<part>    [{ t: text, p: page }]                                                           */
 const LIB_MAX_CHARS = 15e6, LIB_MAX_DOCS = 60, LIB_PART_MAX = 320000, LIB_MAX_PARTS = 80;
+/* the original files live in a private S3 bucket; the browser uploads and opens them with short-lived signed links */
+const FILES_BUCKET = process.env.FILES_BUCKET || '', FILE_MAX = 100e6, FILES_MAX_TOTAL = 3e9, REGION = process.env.AWS_REGION || 'us-east-1';
+const enc3986 = s => encodeURIComponent(s).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+const fileKey = (sub, id, name) => 'u/' + sub + '/' + id + '/' + (String(name || 'file').replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 100) || 'file');
+// AWS Signature Version 4, query-string form (a presigned S3 URL); headers listed in `signed` must be sent as given
+function presign(method, key, o) {
+  o = o || {};
+  const c = o.creds || { id: process.env.AWS_ACCESS_KEY_ID, secret: process.env.AWS_SECRET_ACCESS_KEY, token: process.env.AWS_SESSION_TOKEN };
+  const now = o.now || new Date(), amz = now.toISOString().replace(/[:-]|\.\d{3}/g, ''), day = amz.slice(0, 8);
+  const region = o.region || REGION, host = o.host || FILES_BUCKET + '.s3.' + region + '.amazonaws.com';
+  const scope = day + '/' + region + '/s3/aws4_request', hdrs = Object.assign({ host }, o.signed || {});
+  const names = Object.keys(hdrs).map(h => h.toLowerCase()).sort();
+  const q = Object.assign({ 'X-Amz-Algorithm': 'AWS4-HMAC-SHA256', 'X-Amz-Credential': c.id + '/' + scope, 'X-Amz-Date': amz, 'X-Amz-Expires': String(o.expires || 900), 'X-Amz-SignedHeaders': names.join(';') },
+    c.token ? { 'X-Amz-Security-Token': c.token } : {}, o.query || {});
+  const cq = Object.keys(q).sort().map(k => enc3986(k) + '=' + enc3986(q[k])).join('&');
+  const path = '/' + key.split('/').map(enc3986).join('/');
+  const lower = {}; Object.keys(hdrs).forEach(h => { lower[h.toLowerCase()] = String(hdrs[h]).trim(); });
+  const creq = [method, path, cq, names.map(h => h + ':' + lower[h] + '\n').join(''), names.join(';'), 'UNSIGNED-PAYLOAD'].join('\n');
+  const sts = ['AWS4-HMAC-SHA256', amz, scope, crypto.createHash('sha256').update(creq).digest('hex')].join('\n');
+  const hm = (k, d) => crypto.createHmac('sha256', k).update(d).digest();
+  const sk = hm(hm(hm(hm('AWS4' + c.secret, day), region), 's3'), 'aws4_request');
+  return 'https://' + host + path + '?' + cq + '&X-Amz-Signature=' + crypto.createHmac('sha256', sk).update(sts).digest('hex');
+}
+async function s3Delete(key) {
+  if (!FILES_BUCKET || !key) return;
+  const s3m = require('@aws-sdk/client-s3');
+  await new s3m.S3Client({}).send(new s3m.DeleteObjectCommand({ Bucket: FILES_BUCKET, Key: key }));
+}
+async function s3Exists(key) {
+  const r = await fetch(presign('HEAD', key, { expires: 60 }), { method: 'HEAD' });
+  return r.ok ? { size: +r.headers.get('content-length') || 0 } : null;
+}
 const libMetaKey = sub => 'lib#' + sub + '#meta', libPartKey = (sub, d, i) => 'lib#' + sub + '#' + d + '#' + i;
 async function libMeta(sub) {
   const r = await D().get(libMetaKey(sub)); let m = { docs: [] };
@@ -302,11 +334,13 @@ async function library(ev, sub, path, method, q) {
     if (!/^[a-z0-9-]{8,40}$/.test(id) || !(part >= 0) || !(parts >= 1) || part >= parts || parts > LIB_MAX_PARTS || !Array.isArray(b.chunks)) return jres(400, { error: 'Bad upload.' });
     const chunks = b.chunks.filter(x => x && typeof x.t === 'string' && x.t.trim()).map(x => ({ t: x.t.slice(0, 4000), p: Number.isInteger(x.p) ? x.p : null }));
     if (part === 0) {
+      let file = null;   // the original, uploaded to S3 just before: confirm it is there and record it
+      if (b.file && FILES_BUCKET) { const key = fileKey(sub, id, b.name), got = await s3Exists(key).catch(() => null); if (got) file = { key, size: got.size, type: String(b.file.type || '').slice(0, 100) }; }
       const err = await libChange(sub, m => {
         const others = m.docs.filter(d => d.id !== id);
         if (others.length >= LIB_MAX_DOCS) return 'Your library is full (' + LIB_MAX_DOCS + ' documents). Delete one first.';
         if (others.reduce((n, d) => n + (d.chars || 0), 0) + (+b.chars || 0) > LIB_MAX_CHARS) return 'This document would take your library past its ' + Math.round(LIB_MAX_CHARS / 1e6) + ' million characters. Delete something first.';
-        m.docs = others.concat([{ id, name: String(b.name || 'Document').slice(0, 120), type: String(b.type || '').slice(0, 10), pages: +b.pages || null, chars: +b.chars || 0, chunks: +b.chunkCount || 0, parts, at: Date.now(), done: false }]);
+        m.docs = others.concat([{ id, name: String(b.name || 'Document').slice(0, 120), type: String(b.type || '').slice(0, 10), pages: +b.pages || null, chars: +b.chars || 0, chunks: +b.chunkCount || 0, parts, at: Date.now(), done: false, file }]);
         return null;
       });
       if (err) return jres(400, { error: err });
@@ -315,10 +349,29 @@ async function library(ev, sub, path, method, q) {
     if (part === parts - 1) await libChange(sub, m => { const d = m.docs.find(x => x.id === id); if (d) { d.done = true; d.at = Date.now(); } });
     return jres(200, { ok: true });
   }
+  if (path === '/library/file-url' && method === 'POST') {
+    if (!FILES_BUCKET) return jres(501, { error: 'Keeping original files isn’t switched on (update the AWS stack).' });
+    let b; try { b = JSON.parse(ev.isBase64Encoded ? Buffer.from(ev.body || '', 'base64').toString('utf8') : (ev.body || '{}')); } catch (e) { return jres(400, { error: 'Not JSON.' }); }
+    const id = String(b.id || ''), size = Math.floor(+b.size);
+    if (!/^[a-z0-9-]{8,40}$/.test(id) || !(size > 0)) return jres(400, { error: 'Bad file.' });
+    if (size > FILE_MAX) return jres(400, { error: 'Files can be up to ' + Math.round(FILE_MAX / 1e6) + ' MB.' });
+    const { m } = await libMeta(sub);
+    if (m.docs.filter(d => d.id !== id && d.file).reduce((n, d) => n + (d.file.size || 0), 0) + size > FILES_MAX_TOTAL) return jres(400, { error: 'Your stored files would pass ' + Math.round(FILES_MAX_TOTAL / 1e9) + ' GB. Delete some first.' });
+    const key = fileKey(sub, id, b.name);
+    return jres(200, { url: presign('PUT', key, { expires: 900, signed: { 'content-length': size } }), key });
+  }
+  if (path === '/library/file' && method === 'GET') {
+    const { m } = await libMeta(sub), d = m.docs.find(x => x.id === String(q.id || ''));
+    if (!d || !d.file) return jres(404, { error: 'This document has no stored original. Upload it again to keep the file.' });
+    const name = d.name.replace(/["\\\r\n]/g, '_');
+    const disp = (q.download ? 'attachment' : 'inline') + '; filename="' + name.replace(/[^\x20-\x7e]/g, '_') + '"; filename*=UTF-8\'\'' + enc3986(d.name);
+    return jres(200, { url: presign('GET', d.file.key, { expires: 600, query: { 'response-content-disposition': disp, 'response-content-type': d.file.type || 'application/octet-stream' } }) });
+  }
   if (path === '/library/doc' && method === 'DELETE') {
     const id = String(q.id || '');
     const gone = await libChange(sub, m => { const d = m.docs.find(x => x.id === id); m.docs = m.docs.filter(x => x.id !== id); return d; });
     if (gone) for (let i = 0; i < (gone.parts || 0); i++) await D().del(libPartKey(sub, id, i));
+    if (gone && gone.file) await s3Delete(gone.file.key).catch(e => console.error('file delete failed', e && e.message));
     delete LIBC[sub];
     return jres(200, { ok: true, removed: !!gone });
   }
@@ -608,4 +661,4 @@ exports.handler = async (ev) => {
     return jres(500, { error: 'server error' });
   }
 };
-exports._test = { setDeps: d => { deps = d; }, material, TOOLS };
+exports._test = { setDeps: d => { deps = d; }, material, TOOLS, presign };
