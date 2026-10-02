@@ -2749,21 +2749,24 @@ function objectiveOptions(sel){
 function openGenerate(preset,done){
   preset=preset||{};
   if(PROV()==='connector'){const what=preset.kind==='cards'?'5 flashcards':preset.kind==='questions'?'5 practice questions':'a few flashcards and practice questions';
+    if(String(preset.obj||'').startsWith('div:')){const dd=preset.obj==='div:ALL'?'PA, PPD and PDD':preset.obj.slice(4);askClaude('Write practice questions covering EVERY objective of '+dd+' (use list_objectives to get them), 2 per objective, in mixed formats. Call question_examples first and follow its style and the format rules in add_practice_question, then show me each section’s drafts and add them once I say yes.');return;}
     askClaude('Make '+what+(preset.doc?' from my uploaded document "'+preset.doc.name+'" (document_id '+preset.doc.id+'; read it with search_library)':preset.obj?' on objective '+preset.obj+' ('+objTitle(preset.obj)+')':' on my weakest objective (check weak_spots)')+'. Check my existing material first so you don’t repeat it, show me the drafts, and add them to my material once I say yes.');return;}
   if(!needAi(()=>openGenerate(preset,done)))return;
+  setTimeout(()=>genScopeUI($('#modal')),0);
   modalForm('<div class="lbl">'+AI_NAME()+' · your own material</div><div class="q">Generate study material</div>'+
     '<p class="small">'+AI_NAME()+' drafts cards and questions; you review them before anything is added to your material.</p>'+(preset.doc?'<div class="impv"><b>From your document: '+esc(preset.doc.name)+'</b><p class="small" style="margin:4px 0 0">Give a topic to focus on part of it. Without one, '+AI_NAME()+' works from its first pages.</p></div>':'')+
-    '<form class="edf" id="genForm"><div class="edrow"><label class="af" style="flex:2 1 260px"><span>Objective</span><select class="sel" id="genObj"><option value="">Any — use the topic or notes below</option>'+objectiveOptions(preset.obj||'')+'</select></label>'+
+    '<form class="edf" id="genForm"><div class="edrow"><label class="af" style="flex:2 1 260px"><span>Objective</span><select class="sel" id="genObj"><option value="">Any — use the topic or notes below</option><optgroup label="Cover a whole division">'+DIVS.map(d=>'<option value="div:'+d+'"'+(preset.obj==='div:'+d?' selected':'')+'>All of '+d+' — every objective</option>').join('')+'<option value="div:ALL"'+(preset.obj==='div:ALL'?' selected':'')+'>All three divisions — every objective</option></optgroup><optgroup label="One objective">'+objectiveOptions(preset.obj||'')+'</optgroup></select></label>'+
     '<label class="af" style="flex:1 1 150px"><span>Make</span><select class="sel" id="genKind"><option value="both">Cards and questions</option><option value="cards"'+(preset.kind==='cards'?' selected':'')+'>Flashcards only</option><option value="questions"'+(preset.kind==='questions'?' selected':'')+'>Questions only</option></select></label>'+
     '<label class="af" style="flex:1 1 170px"><span>Question formats</span><select class="sel" id="genFmt"><option value="mix">Mix: same concept, several formats</option><option value="mc">Multiple choice</option><option value="cata">Check all that apply</option><option value="num">Fill in the number</option><option value="match">Drag and drop (matching)</option></select></label>'+
-    '<label class="af" style="flex:0 1 100px"><span>How many</span><select class="sel" id="genN"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></label></div>'+
+    '<label class="af" style="flex:0 1 120px"><span id="genNl">How many</span><select class="sel" id="genN"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></label></div>'+
     '<label class="af"><span>Topic (optional)</span><input id="genTopic" placeholder="e.g. exit separation, flashing at shelf angles"></label>'+
     '<label class="af"><span>Your notes to work from (optional)</span><textarea id="genNotes" rows="5" placeholder="Paste notes, a textbook passage, or a list of facts"></textarea></label>'+
     '<div id="genMsg"></div><div class="row" id="genActs"><button type="submit" class="btn pri">Generate</button><button type="button" class="btn" data-a="close">Cancel</button></div></form>',
   (a,m,close)=>{if(a==='close'){if(m._ctl)m._ctl.abort();close();}},
   async(form,m,close)=>{
     const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(); let notes=$('#genNotes',m).value.trim();
-    if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'â€¦</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldnâ€™t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
+    if(obj.startsWith('div:')){const ds=obj==='div:ALL'?DIVS.slice():[obj.slice(4)];return generateCoverage(ds,n,kind,$('#genFmt',m).value,topic,m,close,done);}
+    if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'…</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldn’t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
     if(!obj&&!topic&&!notes){$('#genMsg',m).innerHTML='<div class="aerr">Choose an objective, or give a topic or notes.</div>';return;}
     const fmt=$('#genFmt',m).value, ex=styleExamples(obj,preset.doc?null:obj?obj.split(' ')[0]:null).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
@@ -2779,13 +2782,57 @@ function openGenerate(preset,done){
     }catch(e){if(e.aborted)return;$('#genMsg',m).innerHTML='<div class="aerr">'+esc(e.message)+'</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';}
   });
 }
+/* the "How many" list means "per objective" when a whole division is chosen */
+function genScopeUI(m){
+  const sel=$('#genObj',m), n=$('#genN',m), l=$('#genNl',m); if(!sel||!n)return;
+  const paint=()=>{const whole=sel.value.startsWith('div:'), was=n.value;
+    l.textContent=whole?'Per objective':'How many';
+    n.innerHTML=(whole?['1','2','3','4']:['3','5','8','12']).map(v=>'<option'+(v===(whole?'2':'5')?' selected':'')+'>'+v+'</option>').join('');
+    if([...n.options].some(o=>o.value===was))n.value=was;
+    const cnt=whole?(sel.value==='div:ALL'?DIVS:[sel.value.slice(4)]).reduce((s,d)=>s+divOutline(d).reduce((a,x)=>a+x.objs.length,0),0):0;
+    let hint=$('#genScope',m); if(!hint){hint=document.createElement('p');hint.id='genScope';hint.className='small';sel.closest('.edrow').after(hint);}
+    hint.textContent=whole?'Covers all '+cnt+' objectives, one exam section at a time, in the same formats and style as your bank. You review everything before it is added.':'';};
+  sel.onchange=paint; n.onchange=()=>{const h=$('#genScope',m);if(h&&sel.value.startsWith('div:'))paint();}; paint();
+}
+/* cover every objective of one or more divisions: one request per exam section, then one review */
+async function generateCoverage(divs,per,kind,fmt,topic,m,close,done){
+  const jobs=[]; divs.forEach(d=>divOutline(d).forEach(sec=>{if(sec.objs.length)jobs.push({d,sec});}));
+  const pack={title:(divs.length>1?'PA, PPD and PDD':divs[0])+' · every objective · '+AI_NAME(),points:[],cards:[],questions:[]}, failed=[];
+  const acts=$('#genActs',m), msg=$('#genMsg',m);
+  m._ctl=new AbortController();
+  for(let i=0;i<jobs.length;i++){
+    const {d,sec}=jobs[i];
+    acts.innerHTML='<p class="small" style="margin:0">'+AI_NAME()+' is writing section '+(i+1)+' of '+jobs.length+': '+d+' · '+esc(sec.title.replace(/\s+—.*$/,''))+' · '+pack.questions.length+' questions so far</p><button type="button" class="btn" data-a="close">Stop</button>';
+    const ex=styleExamples(null,d).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
+    const objs=sec.objs.map(o=>'- '+o.split(' ')[1]+': '+objTitle(o)).join('\n');
+    const prompt='Write ARE '+d+' study material covering EVERY objective in the section "'+sec.title+'":\n'+objs+'\n\n'+
+      'For each objective write '+(kind==='cards'?per+' flashcard'+(per>1?'s':'')+' and no questions':per+' practice question'+(per>1?'s':'')+(kind==='both'?' and 1 flashcard':' and no flashcards'))+
+      '. Use division "'+d+'" and that objective\'s number (like "'+sec.objs[0].split(' ')[1]+'") for every item. Leave "points" empty.'+(topic?' Where it fits, lean toward: '+topic+'.':'')+'\n'+
+      'Cards: a prompt and a complete answer (full lists where the exam tests lists).\n'+FORMAT_RULES+'\n'+
+      (fmt==='mix'?'Use different formats across the section, and where an objective gets more than one question, write the same concept in two different formats (for example a multiple-choice scenario and a matching or fill-in-the-number question). Use "num" only for real calculations.':'Write every question in the "'+fmt+'" format.')+
+      '\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+
+      '\nTitle: "'+d+' '+sec.title.replace(/\s+—.*$/,'').slice(0,50)+'".';
+    try{const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:32000,schema:PACK_SCHEMA,signal:m._ctl.signal});
+      (j.cards||[]).forEach(x=>pack.cards.push(Object.assign({},x,{division:d})));(j.questions||[]).forEach(x=>pack.questions.push(Object.assign({},x,{division:d})));}
+    catch(e){if(e&&e.aborted){if(!pack.questions.length&&!pack.cards.length)return;break;}failed.push(d+' · '+sec.title.replace(/\s+—.*$/,'')+': '+(e.message||e));}
+  }
+  // which objectives ended up without a question (or card)
+  const have=new Set(pack.questions.concat(pack.cards).map(x=>String(x.division).toUpperCase()+' '+((String(x.objective).match(/\d+\.\d+/)||[''])[0])));
+  const missing=jobs.flatMap(j=>j.sec.objs).filter(o=>!have.has(o));
+  if(!pack.questions.length&&!pack.cards.length){msg.innerHTML='<div class="aerr">Nothing came back. '+esc(failed[0]||'Try again.')+'</div>';acts.innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}
+  close(); openImportWith(JSON.stringify(pack),done);
+  const note=(failed.length?'<b>Not written:</b> '+failed.map(esc).join('; ')+'. ':'')+(missing.length?'<b>No question yet for:</b> '+missing.join(', ')+'. Generate those objectives on their own to fill the gaps.':'');
+  if(note){const mm=$('#modal');if(mm)mm.insertAdjacentHTML('afterbegin','<div class="impv" style="margin-bottom:10px"><p class="small" style="margin:0">'+note+'</p></div>');}
+  else toast('Every objective is covered · review and import');
+}
 /* open the import preview pre-filled (used for Claude drafts) */
 function openImportWith(text,done){openImport(done);const t=$('#imText');if(t){t.value=text;$('#modal').querySelector('[data-a="check"]').click();}}
 
 /* example questions for the AI to imitate: the objective's own first, then the division, one of each format where possible */
 function styleExamples(obj,div){
   const pool=ITEMS.filter(q=>!q.mine&&(obj?q.o===obj:div?q.d===div:true)), more=ITEMS.filter(q=>!q.mine&&div&&q.d===div&&!pool.includes(q));
-  const out=[]; ['mc','cata','num','match'].forEach(ty=>{const q=pool.find(x=>x.t===ty)||more.find(x=>x.t===ty);if(q)out.push(q);});
+  const any=ITEMS.filter(q=>!q.mine);   // a format the division lacks is shown from another division, for its shape
+  const out=[]; ['mc','cata','num','match'].forEach(ty=>{const q=pool.find(x=>x.t===ty)||more.find(x=>x.t===ty)||any.find(x=>x.t===ty);if(q)out.push(q);});
   return out.slice(0,4);
 }
 

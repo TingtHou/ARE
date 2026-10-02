@@ -118,7 +118,7 @@ async function material() {
     items: (A.questions || []).filter(x => x && x.id != null && x.s).map(x => Object.assign({}, x, { id: String(x.id), t: QTYPES.includes(x.t) ? x.t : 'mc', e: x.e || '' })).filter(qValid),
     plan: (A.plan || []).slice().sort((a, b) => a.w - b.w),
     exams: (A.exams || []).map(e => ({ d: e.d, n: e.name || e.d, date: normD(e.date) })),
-    heads: [], rows: [], objt: {}
+    heads: [], rows: [], objt: {}, outline: {}
   };
   ids.forEach((pid, i) => {
     const html = notes[i], re = /<(h[1-4])\b[^>]*>([\s\S]*?)<\/\1>/gi, hs = []; let m;
@@ -135,7 +135,8 @@ async function material() {
       if (m[1] != null) { const pill = m[1].match(/class="pill[^"]*">([^<]*)</); div = pill ? pill[1].trim() : null; continue; }
       const td = [...m[2].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(x => strip(x[1]));
       if (td.length >= 2) M.rows.push({ page: pid, cells: td });
-      if (pid === 'objectives' && td.length === 3 && div) M.objt[div + ' ' + td[0]] = td[1].replace(/(Narrowed|Clarified) Apr 2026/, '').trim();
+      if (pid === 'objectives' && td.length === 3 && div) { M.objt[div + ' ' + td[0]] = td[1].replace(/(Narrowed|Clarified) Apr 2026/, '').trim(); const ol = M.outline[div] = M.outline[div] || []; if (!ol.length) ol.push({ title: '', objs: [] }); ol[ol.length - 1].objs.push(div + ' ' + td[0]); }
+      if (pid === 'objectives' && td.length === 1 && div) (M.outline[div] = M.outline[div] || []).push({ title: td[0], objs: [] });
     }
   });
   MAT = M; MAT_AT = Date.now();
@@ -415,6 +416,40 @@ async function library(ev, sub, path, method, q) {
   return jres(404, { error: 'not found' });
 }
 
+/* ---------- writing questions: the same formats and rules as the website's generator ---------- */
+const FORMAT_RULES = 'Formats: "mc" = 4 options, exactly one correct. "cata" = check all that apply: 5–6 options, 2 or more correct, and the question says how many to check. ' +
+  '"num" = fill in the number: no options; answer (number), unit ("" if none), tolerance (accepted difference for rounding); the question says what to round to. ' +
+  '"match" = drag and drop: 3–6 statements and 3–6 choices; matches gives the right choice for each statement, in order (a choice may repeat). ' +
+  'Every question: a short title naming the concept; a realistic scenario in the current NCARB style rather than a bare definition; an explanation with the rule that decides it, why each trap is wrong ("- A → …" lines), the working for calculations, and a "Reference:" line when you know the source. ' +
+  'Write the same concept in more than one format where it fits; use "num" only for real calculations. Before writing, call question_examples and follow its style without copying.';
+function packOfItem(q) {
+  const title = (String(q.s).match(/<p class="qtitle">([\s\S]*?)<\/p>/) || [])[1];
+  const out = { type: q.t, title: title ? strip(title) : '', question: strip(String(q.s).replace(/<p class="qtitle">[\s\S]*?<\/p>/, '')) };
+  if (q.t === 'num') Object.assign(out, { answer: +q.ans, tolerance: +q.tol || 0, unit: q.unit || '' });
+  else if (q.t === 'match') Object.assign(out, { statements: q.items.map(strip), choices: q.opts.map(strip), matches: q.c.map(k => strip(q.opts[k])) });
+  else Object.assign(out, { options: q.opts.map(strip), correct: q.c.map(k => strip(q.opts[k])) });
+  out.explanation = strip(q.e); return out;
+}
+function itemFromInput(i) {
+  const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD or PDD, e.g. "PPD 2.2".');
+  const str = v => String(v == null ? '' : v).trim(), arr = v => Array.isArray(v) ? v.map(str).filter(Boolean) : [];
+  const pick = (list, w) => { const x = str(w); let k = list.findIndex(o => o.toLowerCase() === x.toLowerCase()); if (k < 0 && /^[A-Za-z]$/.test(x)) k = x.toUpperCase().charCodeAt(0) - 65; if (k < 0 && x.length > 3) k = list.findIndex(o => o.toLowerCase().startsWith(x.toLowerCase().slice(0, 25))); return k >= 0 && k < list.length ? k : -1; };
+  const title = str(i.title), stem = str(i.question); if (!stem) throw new Error('question is empty.');
+  const base = { d: ob.d, o: ob.full, s: (title ? '<p class="qtitle">' + esc(title) + '</p>' : '') + md2html(stem), e: md2html(str(i.explanation)), sraw: stem, eraw: str(i.explanation), at: Date.now() };
+  const ty = String(i.type || 'mc');
+  if (ty === 'num') { const v = numIn(i.answer); if (v == null) throw new Error('A "num" question needs a numeric answer.'); const dec = (String(i.answer).split('.')[1] || '').length; return Object.assign(base, { t: 'num', ans: v, tol: numIn(i.tolerance) != null ? Math.abs(numIn(i.tolerance)) : +(0.5 * Math.pow(10, -dec)).toPrecision(3), unit: str(i.unit).slice(0, 30) }); }
+  if (ty === 'match') { const items = arr(i.statements), opts = arr(i.choices), c = arr(i.matches).map(w => pick(opts, w)); if (items.length < 2 || opts.length < 2 || c.length !== items.length || c.some(k => k < 0)) throw new Error('A "match" question needs 2+ statements, 2+ choices and one right choice (from choices) per statement.'); return Object.assign(base, { t: 'match', items, opts, c }); }
+  const opts = arr(i.options).map(x => x.replace(/^[A-H][.)]\s*/, '')), c = [...new Set(arr(i.correct).map(w => pick(opts, w)).filter(k => k >= 0))];
+  if (opts.length < 2 || !c.length) throw new Error('Need 2+ options and at least one correct option (its text or letter).');
+  return Object.assign(base, { t: ty === 'cata' || c.length > 1 ? 'cata' : 'mc', opts, c });
+}
+const Q_INPUT = { type: 'object', additionalProperties: false, required: ['objective', 'type', 'title', 'question', 'explanation'], properties: {
+  objective: { type: 'string', description: 'e.g. "PPD 2.2"' }, type: { type: 'string', enum: ['mc', 'cata', 'num', 'match'] }, title: { type: 'string' }, question: { type: 'string' },
+  options: { type: 'array', items: { type: 'string' } }, correct: { type: 'array', items: { type: 'string' }, description: 'Text or letters of the correct options (mc, cata)' },
+  answer: { type: 'number' }, tolerance: { type: 'number' }, unit: { type: 'string' },
+  statements: { type: 'array', items: { type: 'string' } }, choices: { type: 'array', items: { type: 'string' } }, matches: { type: 'array', items: { type: 'string' }, description: 'The right choice for each statement, in order (match)' },
+  explanation: { type: 'string' } } };
+
 /* ---------- the tools ---------- */
 const TOOLS = [
   { name: 'study_status', title: 'Study status', annotations: RO, description: 'The student’s current situation: today’s date, study-plan week and its tasks (with task_id and done), exam dates and days left, flashcard and question counts, and how many mistakes are due. Use at the start of planning or "what should I do" questions.',
@@ -485,13 +520,22 @@ const TOOLS = [
       (i.cards || []).slice(0, 25).forEach(c => { const q = String(c.question || '').trim(), a = String(c.answer || '').trim(); if (!q || !a) return; const ob = objIn(c.objective), id = newUid();
         cc[id] = { d: String(c.deck || 'My cards').slice(0, 60), o: ob.full || '—', q: oneLine(q), a: md2html(a), qraw: q, araw: a, at: Date.now() }; ids.push(id); });
       if (!ids.length) throw new Error('No valid cards (each needs question and answer).'); return { added: ids.length, card_ids: ids }; } },
-  { name: 'add_practice_question', title: 'Add a practice question', annotations: RW, write: true, description: 'Add one practice question to the student’s own material. mc has exactly one correct option; cata has two or more.',
-    inputSchema: OBJ({ objective: { type: 'string' }, type: { type: 'string', enum: ['mc', 'cata'] }, question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, correct: { type: 'array', items: { type: 'string' }, description: 'Letters of the correct options' }, explanation: { type: 'string' } }, ['objective', 'type', 'question', 'options', 'correct', 'explanation']),
+  { name: 'add_practice_question', title: 'Add practice questions', annotations: RW, write: true, description: 'Add practice questions to the student’s own material, in any of the four formats the site uses. Only after they ask for new questions and agree to the drafts. ' + FORMAT_RULES,
+    inputSchema: OBJ({ questions: { type: 'array', minItems: 1, maxItems: 25, items: Q_INPUT } }, ['questions']),
+    run: (X, i) => { const box = custom(X.S, 'items'), out = [], errs = [];
+      (i.questions || []).slice(0, 25).forEach((q, k) => { try { const id = newUid() + k; box[id] = itemFromInput(q); out.push({ question_id: id, type: box[id].t, objective: box[id].o }); } catch (e) { errs.push('Question ' + (k + 1) + ': ' + e.message); } });
+      if (!out.length) throw new Error(errs.join(' ') || 'No questions given.');
+      return { added: out.length, questions: out, problems: errs }; } },
+  { name: 'question_examples', title: 'Example questions to follow', annotations: RO, description: 'Up to four questions from the site’s bank, one per format (mc, cata, num, match), from the objective (or its division) — the style to follow when writing new questions. Includes the correct answers.',
+    inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PDD 1.5", or a division like "PPD"' } }, ['objective']),
     run: (X, i) => { const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD or PDD.');
-      const opts = (i.options || []).map(x => String(x).replace(/^[A-Z][.)]\s*/, '').trim()).filter(Boolean), c = [...new Set((i.correct || []).map(x => String(x).trim().toUpperCase().charCodeAt(0) - 65).filter(k => k >= 0 && k < opts.length))];
-      if (opts.length < 2 || !c.length) throw new Error('Need 2+ options and at least one correct letter.');
-      const id = newUid(); custom(X.S, 'items')[id] = { d: ob.d, o: ob.full, t: i.type === 'cata' || c.length > 1 ? 'cata' : 'mc', s: oneLine(String(i.question)), opts, c, e: String(i.explanation || ''), sraw: String(i.question), eraw: String(i.explanation || ''), at: Date.now() };
-      return { added: 1, question_id: id }; } },
+      const pool = X.items.filter(q => !q.mine && (ob.ob ? q.o === ob.full : q.d === ob.d)), more = X.items.filter(q => !q.mine && q.d === ob.d);
+      const out = []; ['mc', 'cata', 'num', 'match'].forEach(ty => { const q = pool.find(x => x.t === ty) || more.find(x => x.t === ty); if (q) out.push(Object.assign({ question_id: q.id, objective: q.o }, packOfItem(q))); });
+      return out.length ? out : 'No example questions for that division yet.'; } },
+  { name: 'list_objectives', title: 'List objectives', annotations: RO, description: 'Every NCARB objective of a division (PA, PPD or PDD), grouped by exam section, with how many bank questions and how many of the student’s own questions each has. Use it to cover a whole division.',
+    inputSchema: OBJ({ division: { type: 'string', enum: ['PA', 'PPD', 'PDD'] } }, ['division']),
+    run: (X, i) => { const d = String(i.division || '').toUpperCase(), ol = X.M.outline[d]; if (!ol) throw new Error('Unknown division.');
+      return ol.filter(s => s.objs.length).map(s => ({ section: s.title, objectives: s.objs.map(o => ({ objective: o, title: X.objTitle(o), bank_questions: X.items.filter(q => q.o === o && !q.mine).length, my_questions: X.items.filter(q => q.o === o && q.mine).length })) })); } },
   { name: 'add_study_point', title: 'Add a study point', annotations: RW, write: true, description: 'Save a short study note to the student’s own material. It also shows under that objective in the site’s notes.',
     inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PA 4.3", or a division like "PPD"' }, text: { type: 'string' } }, ['objective', 'text']),
     run: (X, i) => { const ob = objIn(i.objective), d = ob.d || 'GEN', t = String(i.text || '').trim(); if (!t) throw new Error('text is empty');
@@ -524,7 +568,7 @@ const TOOLS = [
 ];
 const INSTRUCTIONS = 'This is the student’s ARE Study System (ARE 5.0: PA, PPD and PDD). The tools read and update the same progress the student sees on the study website, so answers, ratings and added material show up there too. ' +
   'Be accurate and current: 2021 IBC, 2010 ADA Standards, current NCARB item formats. If you are not sure of a number or code section, say so instead of guessing. Prefer the site’s own material (search_material, get_notes) and the student’s uploaded documents (search_library) for facts, and cite them. The student may have made study agents on the website (list_agents): when they name one, follow its instructions and use its documents. ' +
-  'When quizzing, ask one question at a time with lettered options, wait for the student’s reply, then call record_answer before explaining. Never reveal an answer or explanation before the student responds. For flashcards, show the question, wait, reveal the answer, then ask how it went and call rate_flashcard. Keep replies short unless asked for more.';
+  'When writing questions, follow the format rules in add_practice_question and the style of question_examples; to cover a whole division, go objective by objective with list_objectives. When quizzing, ask one question at a time with lettered options, wait for the student’s reply, then call record_answer before explaining. Never reveal an answer or explanation before the student responds. For flashcards, show the question, wait, reveal the answer, then ask how it went and call rate_flashcard. Keep replies short unless asked for more.';
 
 async function callTool(sub, name, args) {
   const t = TOOLS.find(x => x.name === name);
