@@ -14,6 +14,10 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 - `develop` gets every change first and deploys to the preview site.
 - `main` is the live site. It only moves when an admin clicks **Publish** on the preview site.
 
+## Endless practice
+
+**Endless practice** (Study → Endless practice): pick PA, PPD or PDD and answer one question after another until you click **Finish**. Questions you missed, and objectives where you miss often, come up more; nothing repeats within 8 questions. With ChatGPT on the site (or on the claude.ai link), about one in three questions is newly written for your weakest objectives in mixed formats and saved to My material, so each session adds to the pool. Answers count like Practice, misses go into the Mistakes schedule, and a summary lists what you missed with **Reread** and **Learn it**.
+
 ## Connect your AI (ChatGPT or Claude)
 
 Everyone uses **their own plan**, ChatGPT or Claude. There are no API keys, and nothing is billed to the site.

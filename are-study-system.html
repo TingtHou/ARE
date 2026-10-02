@@ -414,6 +414,11 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .loop{margin-top:14px;border-top:2px solid var(--accent);padding-top:12px}
 .loophd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px}.loophd b{font:600 14px var(--sans);color:var(--accent)}.loophd .lnk{margin-left:auto}
 .loop .qz{box-shadow:none;margin-bottom:8px}.loopnote{margin:0 0 6px;color:var(--ink-3)}.loopnext{align-items:center;gap:10px;flex-wrap:wrap}
+.drillpick{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;margin:16px 0 4px}
+.drillcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:16px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;color:var(--ink);font:inherit}
+.drillcard:hover{border-color:var(--accent)}.drillcard b{font:600 16px var(--sans)}.drillcard .dvweak{color:var(--flag)}
+.drillhd{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 12px;margin:0 0 12px;background:var(--surface);border:1px solid var(--rule);border-radius:10px;font:14px var(--sans)}
+.drillhd .btn{margin-left:auto}.drnext{align-items:center;gap:10px;margin:4px 0 20px}
 .libdrop{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1.5px dashed var(--rule);border-radius:10px;padding:14px;margin:8px 0 12px}.libdrop.on{border-color:var(--accent);background:var(--accent-soft)}
 .agdocs{margin:2px 0 4px 22px;max-height:160px;overflow:auto}
 .chagent{max-width:46%;font:12px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--ink)}
@@ -781,6 +786,7 @@ const PAGES=[
  {id:'cards',g:'Study',n:'Flashcards',i:'SRS'},
  {id:'practice',g:'Study',n:'Practice',i:'Q'},
  {id:'mistakes',g:'Study',n:'Mistakes',i:'ERR'},
+ {id:'drill',g:'Study',n:'Endless practice',i:'∞'},
  {id:'plan',g:'Study',n:'Study plan',i:'14w'},
  {id:'overview',g:'Notes',n:'Overview',i:'00'},
  {id:'objectives',g:'Notes',n:'Objective map',i:'01'},
@@ -1120,6 +1126,7 @@ function go(id,opts){
   else if(id==='plan')initPlan();
   else if(id==='mine')initMine(opts);
   else if(id==='aihelp')initAiHelp();
+  else if(id==='drill')initDrill(opts);
   else if(id.startsWith('div-'))initDivision(id.slice(4).toUpperCase());
   else initNotes(id);
 }
@@ -2144,9 +2151,9 @@ function itemEl(it,idx,mode){
     else $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
     const ok=itemOk(it,s), exp=$('.exp',el);exp.hidden=false;
     exp.innerHTML='<strong style="color:'+(ok?'var(--ok)':'var(--flag)')+'">'+(ok?'Correct.':'Not quite.')+'</strong> '+it.e+(info?'<div class="learned '+info.cls+'">'+info.msg+'</div>':'');
-    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'')+(!ok&&!mode.loop&&mode.live?'<button type="button" class="lnk" data-act="loop">Learn it with similar questions</button>':'');
+    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live&&!mode.drill?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'')+(!ok&&!mode.loop&&mode.live?'<button type="button" class="lnk" data-act="loop">Learn it with similar questions</button>':'');
   };
-  const afterMiss=(q,s)=>{if(mode.live&&!mode.loop&&!itemOk(q,s))learnLoop(el,q,{auto:true});};
+  const afterMiss=(q,s)=>{if(mode.live&&!mode.loop&&!mode.drill&&!itemOk(q,s))learnLoop(el,q,{auto:true});};
   const submit=()=>{const s=readSel();if(!complete(s)){toast(it.t==='num'?'Type a number first':it.t==='match'?'Choose a match for every statement':'Pick at least one option');return;}
     const r=record(idx,s,mode.loop?{practice:true}:null);showResult(s,r);refreshProg();if(mode.onResult)mode.onResult(itemOk(it,s));else afterMiss(it,s);};
   if(mode.live&&S.ans[idx]&&!mode.fresh){showResult(S.ans[idx].sel);}
@@ -3469,6 +3476,142 @@ async function agentContext(q){
   if(ag.site!==false&&!CHAT_DOC&&q.trim())search(q).slice(0,4).forEach((h,i)=>src.push('[N'+(i+1)+'] '+h.k+' · '+h.t+':\n'+h.x.slice(0,600)));
   const focus=CHAT_DOC?'\n\nThe student is asking about their document “'+CHAT_DOC.name+'”. Answer from it; to quiz them, write questions from its passages, one at a time.':'';
   return {sys:sys+focus,sources:src.length?'[Passages found for this message. Base your answer on them when they cover it and cite them like [S1] or [N2], with the page for documents. If they don’t cover it, say so, then answer from general knowledge.]\n\n'+src.join('\n\n'):(useDocs&&!CHAT_DOC?'':CHAT_DOC?'[No passage in “'+CHAT_DOC.name+'” matched this message. Say so if you need the document to answer.]':'')};
+}
+
+/* ================= ENDLESS PRACTICE (#drill) =================
+   Pick PA, PPD or PDD and answer one question after another until you finish. Questions and objectives you miss
+   come up more often; with ChatGPT or Claude in the page, about one in three questions is newly written for your
+   weakest objectives (saved to My material, so later sessions have a bigger pool). Answers count like Practice:
+   misses go into the Mistakes schedule. */
+const DRILL_RECENT=8, DRILL_NEW_EVERY=3;
+let DR=null;   // the running session
+const drillPool=d=>ITEMS.filter(q=>q.d===d);
+/* miss rate per objective, from every answer so far */
+function objMiss(d){
+  const o={}; drillPool(d).forEach(q=>{const a=S.ans[q.id];if(!a)return;const x=o[q.o]=o[q.o]||{n:0,miss:0};x.n++;if(!a.ok)x.miss++;});
+  Object.values(o).forEach(x=>{x.rate=x.n?x.miss/x.n:0;}); return o;
+}
+function drillWeight(q,om,now){
+  const a=S.ans[q.id], m=S.mist[q.id]; let w=1;
+  if(!a)w*=2; else if(!a.ok)w*=5;
+  if(m&&!m.fixed){w+=4;if(m.due<=now)w+=3;}
+  if(a&&a.ok&&now-a.at<DAY)w*=0.3;
+  if(DR&&DR.rightIds.has(q.id))w*=0.3;
+  const x=om[q.o]; if(x)w*=1+2*x.rate;
+  return w;
+}
+function drillPick(d){
+  const now=Date.now(), om=objMiss(d), pool=drillPool(d);
+  const keep=Math.min(DRILL_RECENT,Math.max(0,pool.length-3));
+  const recent=new Set(DR.recent.slice(-keep));
+  const cand=pool.filter(q=>!recent.has(q.id)); if(!cand.length)return pool[0]||null;
+  const ws=cand.map(q=>drillWeight(q,om,now)), tot=ws.reduce((a,b)=>a+b,0);
+  let r=Math.random()*tot; for(let i=0;i<cand.length;i++){r-=ws[i];if(r<=0)return cand[i];}
+  return cand[cand.length-1];
+}
+/* the objective to write new questions for: weakest first, then the least covered */
+function drillTargetObj(d){
+  const om=objMiss(d), objs=divOutline(d).flatMap(s=>s.objs); if(!objs.length)return null;
+  const count=o=>ITEMS.filter(q=>q.o===o).length;
+  const ws=objs.map(o=>{const x=om[o];return (x?1+4*x.rate*Math.min(x.miss,4):1)+3/(1+count(o));});
+  const tot=ws.reduce((a,b)=>a+b,0); let r=Math.random()*tot;
+  for(let i=0;i<objs.length;i++){r-=ws[i];if(r<=0)return objs[i];} return objs[0];
+}
+async function drillWrite(d){
+  const o=drillTargetObj(d); if(!o)return [];
+  const ex=styleExamples(o,d).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
+  const have=ITEMS.filter(q=>q.o===o).slice(-12).map(q=>'- '+strip(q.s).slice(0,140)).join('\n');
+  const prompt='Write 3 new ARE '+d+' practice questions on objective '+o+' ('+objTitle(o)+'), each in a different format where it fits. Leave "points" and "cards" empty. Use division "'+d+'" and objective "'+o.split(' ')[1]+'".\n'+
+    FORMAT_RULES+'\nUse "num" only for real calculations.\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+
+    (have?'\nDon\'t repeat these existing questions on this objective:\n'+have:'')+'\nTitle: "'+o+' · endless practice".';
+  const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:16000,schema:PACK_SCHEMA,signal:DR&&DR.ctl.signal});
+  const probs=[], out=[];
+  (j.questions||[]).forEach((x,k)=>{const p=packQuestion(Object.assign({},x,{division:d,objective:x.objective&&/\d+\.\d+/.test(x.objective)?d+' '+(String(x.objective).match(/\d+\.\d+/)[0]):o}),'New question '+(k+1),probs);
+    if(!p)return; const id=newUid()+k; customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),gen:'drill'})); const it=ITEM(id); if(it)out.push(it);});
+  return out;
+}
+function drillRefill(){
+  if(!DR||!DR.useAi||DR.writing||DR.fresh.length>=2||!aiReady())return;
+  DR.writing=true;
+  drillWrite(DR.d).then(list=>{if(!DR)return;DR.fresh.push(...list);DR.made+=list.length;DR.aiNote='';})
+    .catch(e=>{if(!DR||e&&e.aborted)return;DR.aiNote=(e&&e.message)||'Couldn’t write new questions right now.';DR.aiFails++;if(DR.aiFails>=3)DR.useAi=false;})
+    .finally(()=>{if(DR){DR.writing=false;paintDrillBar();}});
+}
+
+/* ---------- screens ---------- */
+function initDrill(){
+  if(DR&&DR.ctl)DR.ctl.abort(); DR=null;
+  const ai=aiReady(), hist=S.drill||{};
+  view.innerHTML='<div class="eyebrow">Study · until you stop</div><h1 class="t">Endless practice</h1>'+
+    '<p class="lede">Pick a division and answer one question after another. Questions you miss, and objectives where you miss often, come up more. Answers count like Practice: misses go into your Mistakes schedule.</p>'+
+    '<div class="drillpick">'+DIVS.map(d=>{const pool=drillPool(d), om=objMiss(d), h=hist[d];
+      const weak=Object.entries(om).filter(([,x])=>x.miss).sort((a,b)=>b[1].rate*b[1].miss-a[1].rate*a[1].miss).slice(0,3).map(([o])=>o);
+      return '<button type="button" class="drillcard" data-dstart="'+d+'"><span class="pill '+d.toLowerCase()+'">'+d+'</span><b>'+esc((EXAMS.find(e=>e.d===d)||{n:d}).n)+'</b>'+
+        '<span class="small">'+pool.length+' questions'+(h?' · last time '+(h.lastAnswered?Math.round(h.lastCorrect/h.lastAnswered*100)+'% of '+h.lastAnswered:'—'):'')+'</span>'+
+        (weak.length?'<span class="small dvweak">Weak: '+weak.join(', ')+'</span>':'')+'</button>';}).join('')+'</div>'+
+    (ai?'<label class="pass" style="margin:12px 0"><input type="checkbox" id="drAi" checked> Mix in new questions written by '+AI_NAME()+' (about 1 in '+DRILL_NEW_EVERY+', aimed at your weak objectives; they are saved to My material)</label>'
+       :'<p class="small" style="margin:12px 0">Connect ChatGPT on this site (or use the claude.ai link) to mix in newly written questions. <a href="#aihelp">AI setup</a></p>');
+  view.onclick=e=>{const b=e.target.closest('[data-dstart]');if(b)startDrill(b.dataset.dstart,ai&&!!($('#drAi')||{}).checked);};
+}
+function startDrill(d,useAi){
+  DR={d,useAi,ctl:new AbortController(),recent:[],rightIds:new Set(),fresh:[],writing:false,made:0,aiFails:0,aiNote:'',n:0,ok:0,streak:0,best:0,sinceNew:0,missedObjs:{},cur:null,answered:false,started:Date.now()};
+  view.innerHTML='<div class="drillhd" id="drHd"></div><div id="drQ"></div>';
+  view.onclick=e=>{const b=e.target.closest('[data-dr]');if(!b)return;
+    if(b.dataset.dr==='next')drillNext();
+    if(b.dataset.dr==='finish')finishDrill();
+    if(b.dataset.dr==='learn'){const it=ITEM(b.dataset.id);if(it)learnLoop(b.closest('.drsum')||view,it);}
+    if(b.dataset.dr==='again')startDrill(d,useAi);
+    if(b.dataset.dr==='menu')initDrill();};
+  document.onkeydown=e=>{if(curPage!=='drill'||!DR){document.onkeydown=null;return;}
+    if(e.key==='Enter'&&DR.answered&&!e.target.closest('input,textarea,select')){e.preventDefault();drillNext();}};
+  drillRefill(); drillNext();
+}
+function paintDrillBar(){
+  const h=$('#drHd'); if(!h||!DR)return;
+  const acc=DR.n?Math.round(DR.ok/DR.n*100)+'%':'—';
+  h.innerHTML='<span class="pill '+DR.d.toLowerCase()+'">'+DR.d+'</span><span><b>'+DR.n+'</b> answered</span><span><b>'+DR.ok+'</b> right</span><span><b>'+acc+'</b></span><span>streak <b>'+DR.streak+'</b></span>'+
+    (DR.cur&&DR.cur.gen==='drill'?'<span class="chip c-ok">new</span>':'')+(DR.writing?'<span class="small">writing new questions…</span>':DR.aiNote?'<span class="small" title="'+esc(DR.aiNote)+'">bank questions only for now</span>':'')+
+    '<button type="button" class="btn sm" data-dr="finish">Finish</button>';
+}
+function drillNext(){
+  if(!DR)return;
+  // about one in three is new, when a newly written question is waiting
+  let it=null;
+  if(DR.fresh.length&&DR.sinceNew>=DRILL_NEW_EVERY-1){it=DR.fresh.shift();DR.sinceNew=0;}
+  if(!it){it=drillPick(DR.d);DR.sinceNew++;}
+  if(!it){$('#drQ').innerHTML='<div class="panel empty">There are no '+DR.d+' questions yet. Add some on My material, or connect ChatGPT to have them written.</div>';return;}
+  const raw=(S.custom&&S.custom.items&&S.custom.items[it.id])||{};
+  DR.cur=Object.assign({},it,{gen:raw.gen}); DR.answered=false;
+  DR.recent.push(it.id); if(DR.recent.length>40)DR.recent.shift();
+  const q=$('#drQ'); q.innerHTML='';
+  const el=itemEl(it,it.id,{live:true,fresh:true,drill:true,onResult:ok=>{
+    DR.n++; DR.answered=true;
+    if(ok){DR.ok++;DR.streak++;DR.best=Math.max(DR.best,DR.streak);DR.rightIds.add(it.id);}
+    else{DR.streak=0;(DR.missedObjs[it.o]=DR.missedObjs[it.o]||[]).push(it.id);}
+    paintDrillBar();
+    q.insertAdjacentHTML('beforeend','<div class="row drnext"><button type="button" class="btn pri" data-dr="next">Next question →</button><span class="small">or press Enter</span></div>');
+    drillRefill();
+  }});
+  el.id='dr-'+it.id; q.appendChild(el);
+  paintDrillBar(); window.scrollTo(0,0);
+  drillRefill();
+}
+function finishDrill(){
+  if(!DR)return; const d=DR.d, s=DR;
+  if(s.ctl)s.ctl.abort();
+  S.drill=S.drill||{}; const h=S.drill[d]=S.drill[d]||{sessions:0,answered:0,correct:0};
+  if(s.n){h.sessions++;h.answered+=s.n;h.correct+=s.ok;h.lastAnswered=s.n;h.lastCorrect=s.ok;h.last=Date.now();save();}
+  DR=null; document.onkeydown=null;
+  const missed=Object.entries(s.missedObjs);
+  view.innerHTML='<div class="eyebrow">Endless practice · '+d+'</div><h1 class="t">'+(s.n?s.ok+' of '+s.n+' right':'No questions answered')+'</h1>'+
+    '<div class="stats dvstats">'+stat(s.n,'answered')+stat(s.n?Math.round(s.ok/s.n*100)+'%':'—','accuracy')+stat(s.best,'best streak')+stat(s.made,'new questions written')+stat(Math.round((Date.now()-s.started)/60000)+' min','time')+'</div>'+
+    (missed.length?'<h2 class="s">Missed this session</h2><div class="drsum">'+missed.map(([o,ids])=>'<div class="dvrow weak"><span class="obj">'+esc(o)+'</span><span class="dvt"><b>'+esc(objTitle(o))+'</b><span class="small">missed '+ids.length+'× · they come back more often next time</span></span><span class="mb"><button type="button" class="lnk" data-onotes="'+esc(o)+'">Reread</button><button type="button" class="lnk" data-dr="learn" data-id="'+esc(ids[ids.length-1])+'">Learn it</button></span></div>').join('')+'</div>':'')+
+    '<div class="row" style="margin-top:16px"><button type="button" class="btn pri" data-dr="again">Keep going with '+d+'</button><button type="button" class="btn" data-dr="menu">Choose another division</button><a class="btn" href="#mistakes">Mistakes</a></div>';
+  view.onclick=e=>{const b=e.target.closest('[data-dr],[data-onotes]');if(!b)return;
+    if(b.dataset.onotes){gotoObj(b.dataset.onotes);return;}
+    if(b.dataset.dr==='again')startDrill(d,s.useAi);
+    if(b.dataset.dr==='menu')initDrill();
+    if(b.dataset.dr==='learn'){const it=ITEM(b.dataset.id);if(it)learnLoop(b.closest('.dvrow').parentNode,it);}};
 }
 boot();
 })();
