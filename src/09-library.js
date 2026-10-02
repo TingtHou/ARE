@@ -10,8 +10,11 @@ const MAMMOTH_URL='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.13.0/mammoth
 const LIB_TYPES='.pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv';
 async function libApi(path,opts){
   const t=await idToken(); if(!t)throw new Error('Sign in to the study website again.');
-  const r=await fetch(AC.apiUrl.replace(/\/+$/,'')+path,Object.assign({},opts,{headers:{authorization:'Bearer '+t,'content-type':'application/json'}}));
+  let r;
+  try{r=await fetch(AC.apiUrl.replace(/\/+$/,'')+path,Object.assign({},opts,{headers:{authorization:'Bearer '+t,'content-type':'application/json'}}));}
+  catch(e){throw new Error('Couldn’t reach the library service. Check your connection; if this keeps happening, the AWS stack may need the My library update (aws/SETUP.md, “My library and my agents”).');}
   let j={}; try{j=await r.json();}catch(e){}
+  if(r.status===404&&j.error==='not found')throw new Error('My library isn’t switched on yet: the site admin needs to update the AWS stack with the latest aws/are-accounts.yaml (see aws/SETUP.md, “My library and my agents”).');
   if(!r.ok)throw new Error(j.error||('The study server answered '+r.status+'.'));
   return j;
 }
