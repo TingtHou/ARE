@@ -1,4 +1,4 @@
-# ARE Study System
+﻿# ARE Study System
 
 Study site for ARE 5.0 PA, PPD and PDD: dashboard, study notes, spaced-repetition flashcards, timed practice, a mistake log and the 14-week plan.
 
@@ -16,11 +16,11 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 
 ## Divisions
 
-The site covers all five ARE 5.0 divisions: **PA**, **PPD**, **PDD**, **PcM** (Practice Management) and **PjM** (Project Management). PcM and PjM have their own notes pages plus a **Contracts (AIA)** page, objectives in the Objective map, flashcard decks, exam dates on Today (change them there) and plan weeks 15–22. PcM has 56 practice questions; PjM questions are made with **Generate → All of PjM** or written as you go in Endless practice. To re-import: `node tools/import-deck.js <deck data folder>` for the deck, and `node tools/import-quizzes.js <file> --divisions PCM --keep PA,PPD,PDD` for PcM questions.
+The site covers all five ARE 5.0 divisions: **PA**, **PPD**, **PDD**, **PcM** (Practice Management) and **PjM** (Project Management). PcM and PjM have their own notes pages plus a **Contracts (AIA)** page, objectives in the Objective map, flashcard decks, exam dates on Today (change them there) and plan weeks 15–22. PcM has 63 practice questions and PjM has 32 (two per objective); make more with **Generate → All of PcM / All of PjM**, or let Endless practice write them as you go. To add your own written questions: `node tools/add-questions.js <questions.json>`. To re-import: `node tools/import-deck.js <deck data folder>` for the deck, and `node tools/import-quizzes.js <file> --divisions PCM --keep PA,PPD,PDD` for PcM questions.
 
 ## Endless practice
 
-**Endless practice** (Study → Endless practice): pick PA, PPD or PDD and answer one question after another until you click **Finish**. Questions you missed, and objectives where you miss often, come up more; nothing repeats within 8 questions. With ChatGPT on the site (or on the claude.ai link), about one in three questions is newly written for your weakest objectives in mixed formats and saved to My material, so each session adds to the pool. Answers count like Practice, misses go into the Mistakes schedule, and a summary lists what you missed with **Reread** and **Learn it**.
+**Endless practice** (Study → Endless practice): pick a division and answer one question after another until you click **Finish**. Questions you missed, and objectives where you miss often, come up more; nothing repeats within 8 questions. With ChatGPT on the site (or on the claude.ai link), about one in three questions is newly written for your weakest objectives in mixed formats and saved to My material, so each session adds to the pool. Answers count like Practice, misses go into the Mistakes schedule, and a summary lists what you missed with **Reread** and **Learn it**.
 
 ## Connect your AI (ChatGPT or Claude)
 
