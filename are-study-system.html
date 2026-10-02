@@ -2151,7 +2151,7 @@ function itemEl(it,idx,mode){
     else $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
     const ok=itemOk(it,s), exp=$('.exp',el);exp.hidden=false;
     exp.innerHTML='<strong style="color:'+(ok?'var(--ok)':'var(--flag)')+'">'+(ok?'Correct.':'Not quite.')+'</strong> '+it.e+(info?'<div class="learned '+info.cls+'">'+info.msg+'</div>':'');
-    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live&&!mode.drill?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'')+(!ok&&!mode.loop&&mode.live?'<button type="button" class="lnk" data-act="loop">Learn it with similar questions</button>':'');
+    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live&&!mode.drill?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+((!ok||mode.drill)&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'')+(!ok&&!mode.loop&&mode.live?'<button type="button" class="lnk" data-act="loop">Learn it with similar questions</button>':'');
   };
   const afterMiss=(q,s)=>{if(mode.live&&!mode.loop&&!mode.drill&&!itemOk(q,s))learnLoop(el,q,{auto:true});};
   const submit=()=>{const s=readSel();if(!complete(s)){toast(it.t==='num'?'Type a number first':it.t==='match'?'Choose a match for every statement':'Pick at least one option');return;}
@@ -2169,7 +2169,7 @@ function itemEl(it,idx,mode){
     const a=e.target.closest('[data-act]');
     if(a){
       if(a.dataset.act==='reread')gotoObj(it.o);
-      if(a.dataset.act==='cgdisc'){discussInChatGPT(it.id);return;}
+      if(a.dataset.act==='cgdisc'){discussInChatGPT(it.id,S.ans[idx]&&S.ans[idx].ok);return;}
       if(a.dataset.act==='loop'){learnLoop(el,it);return;}
       if(a.dataset.act==='aiexp'){aiExplainItem(it,(S.ans[idx]&&S.ans[idx].sel)||mode.sel||[],el,S.mist[idx]&&!S.mist[idx].fixed?idx:null);return;}
       if(a.dataset.act==='edit'){itemEditor(it,()=>{const nw=ITEM(it.id);if(nw)el.replaceWith(itemEl(nw,nw.id,mode));else el.remove();});return;}
@@ -2516,8 +2516,9 @@ const CG_DISCUSS=AI_MODE!=='plan'&&AUTH_ON&&!!CONNECTOR_URL;
 const CONNECTOR_NAME='ARE Study System', CHATGPT_HOME='https://chatgpt.com/';
 const LSG_DONE='are_chatgpt_connector_added';
 function openNewTab(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();}
-function discussInChatGPT(id){
-  const msg='Use '+CONNECTOR_NAME+' to retrieve question '+id+' and help me understand my mistake.';
+function discussInChatGPT(id,right){
+  const msg='Use '+CONNECTOR_NAME+' to retrieve question '+id+(right?' and go over it with me: why the answer is right and why the other choices are traps.':' and help me understand my mistake.');
+  try{if(dirty)push();}catch(e){}   // save the latest answer (and any newly written question) so the connector finds it
   // both inside the click, so Safari on iPhone allows them: copy first, then open ChatGPT
   let copy=Promise.resolve(false);
   try{if(navigator.clipboard&&navigator.clipboard.writeText)copy=navigator.clipboard.writeText(msg).then(()=>true,()=>false);}catch(e){}

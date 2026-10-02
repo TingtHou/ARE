@@ -110,8 +110,9 @@ const CG_DISCUSS=AI_MODE!=='plan'&&AUTH_ON&&!!CONNECTOR_URL;
 const CONNECTOR_NAME='ARE Study System', CHATGPT_HOME='https://chatgpt.com/';
 const LSG_DONE='are_chatgpt_connector_added';
 function openNewTab(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();}
-function discussInChatGPT(id){
-  const msg='Use '+CONNECTOR_NAME+' to retrieve question '+id+' and help me understand my mistake.';
+function discussInChatGPT(id,right){
+  const msg='Use '+CONNECTOR_NAME+' to retrieve question '+id+(right?' and go over it with me: why the answer is right and why the other choices are traps.':' and help me understand my mistake.');
+  try{if(dirty)push();}catch(e){}   // save the latest answer (and any newly written question) so the connector finds it
   // both inside the click, so Safari on iPhone allows them: copy first, then open ChatGPT
   let copy=Promise.resolve(false);
   try{if(navigator.clipboard&&navigator.clipboard.writeText)copy=navigator.clipboard.writeText(msg).then(()=>true,()=>false);}catch(e){}
