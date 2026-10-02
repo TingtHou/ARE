@@ -415,6 +415,9 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .qmsel{width:100%;max-width:100%;font:15px var(--sans)}
 .qmrow.right{border-color:var(--ok);background:var(--ok-soft)}.qmrow.wrong{border-color:var(--flag);background:var(--flag-soft)}
 .qmans{font:13px var(--sans);color:var(--ok);font-weight:600;margin-top:6px}
+.loop{margin-top:14px;border-top:2px solid var(--accent);padding-top:12px}
+.loophd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px}.loophd b{font:600 14px var(--sans);color:var(--accent)}.loophd .lnk{margin-left:auto}
+.loop .qz{box-shadow:none;margin-bottom:8px}.loopnote{margin:0 0 6px;color:var(--ink-3)}.loopnext{align-items:center;gap:10px;flex-wrap:wrap}
 .libdrop{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1.5px dashed var(--rule);border-radius:10px;padding:14px;margin:8px 0 12px}.libdrop.on{border-color:var(--accent);background:var(--accent-soft)}
 .agdocs{margin:2px 0 4px 22px;max-height:160px;overflow:auto}
 .chagent{max-width:46%;font:12px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--ink)}
@@ -1714,7 +1717,9 @@ const PACK_EXAMPLE={format:'are-study-pack',version:1,title:'PPD egress — my n
   cards:[{deck:'PPD · My egress cards',division:'PPD',objective:'2.2',question:'Minimum number of exits for 620 occupants on one storey',answer:'**3 exits.** 1–500 → 2 · 501–1,000 → 3 · over 1,000 → 4.'}],
   questions:[{division:'PPD',objective:'2.2',type:'mc',question:'A sprinklered Group B floor has an occupant load of 180. Which governs the stair width?',
     options:['180 × 0.2 in = 36 in','180 × 0.3 in = 54 in','The 44 in minimum stair width','The 36 in minimum for fewer than 50 occupants'],
-    correct:['The 44 in minimum stair width'],explanation:'180 × 0.2 = 36 in is below the 44 in minimum for 50 or more occupants, so the minimum governs. 0.3 in applies only without sprinklers plus voice/alarm.'}]};
+    correct:['The 44 in minimum stair width'],explanation:'180 × 0.2 = 36 in is below the 44 in minimum for 50 or more occupants, so the minimum governs. 0.3 in applies only without sprinklers plus voice/alarm.'},
+    {division:'PPD',objective:'2.2',type:'num',title:'Stair width from occupant load',question:'A sprinklered Group A floor has an occupant load of 300. Using 0.2 in. per occupant, what total stair width is required, in inches?',answer:60,tolerance:0,unit:'in.',explanation:'300 × 0.2 = 60 in. That is above the 44 in. minimum, so 60 in. governs.'},
+    {division:'PPD',objective:'2.1',type:'match',title:'Occupancy groups',question:'Match each use to its IBC occupancy group.',statements:['A dentist office','A K–8 school','A retail store'],choices:['Group B','Group E','Group M'],matches:['Group B','Group E','Group M'],explanation:'Outpatient clinics and offices are B; schools through grade 12 are E; retail sales are M.'}]};
 function aiPackPrompt(){
   return 'Turn my study notes into an ARE study pack for the ARE Study System.\n\n'+
   'Reply with ONE JSON object and nothing else, in exactly this shape:\n\n'+JSON.stringify(PACK_EXAMPLE,null,2)+'\n\n'+
@@ -1723,12 +1728,74 @@ function aiPackPrompt(){
   '- "objective" is the NCARB objective number such as "2.2", or "" if none fits.\n'+
   '- "points": short study notes worth rereading. "text" may use "- " bullets, "1. " steps, **bold**, and blank lines between paragraphs.\n'+
   '- "cards": flashcards. "question" is a prompt; "answer" is what to recall, complete lists where the exam tests lists.\n'+
-  '- "questions": exam-style items. "type" is "mc" (exactly one correct option) or "cata" (check all that apply, 2+ correct). Give 4 options for mc and 5–6 for cata. "correct" lists the exact text of each correct option. "explanation" says why the answer is right and why each trap is wrong.\n'+
+  '- "questions": exam-style items in four formats: "mc", "cata", "num" and "match" (see the examples above). Write the same concept in more than one format where it fits.\n'+FORMAT_RULES+'\n'+
   '- Only use facts that are in my notes or that you are confident are current (2021 IBC, 2010 ADA Standards, ARE 5.0). Do not invent code section numbers.\n'+
   '- Leave out any list you have nothing for.\n\n'+
   'My notes:\n\n[paste your notes here]';
 }
 /* read a pack from text: tolerant of code fences and text around the JSON */
+/* one question in study-pack form → a question item, any of the four types:
+   mc / cata: options[], correct[] (option text, letter or number)
+   num:       answer (number), tolerance (optional), unit (optional)
+   match:     statements[], choices[], matches[] (the right choice for each statement: text, letter or number)
+   plus division, objective, title (optional), question and explanation. Problems are reported in words. */
+/* a question item as stored in My material (from a pack, a generator or a similar-question loop) */
+function itemFromPack(q){
+  const it={d:q.d,o:q.o,t:q.t,s:(q.title?'<p class="qtitle">'+esc(q.title)+'</p>':'')+(/\n/.test(q.s)?md2html(q.s):oneLine(q.s)),e:q.e?md2html(q.e).replace(/^<p>([\s\S]*)<\/p>$/,'$1'):'',sraw:q.s,eraw:q.e};
+  if(q.title)it.title=q.title;
+  if(q.t==='num')Object.assign(it,{ans:q.ans,tol:q.tol,unit:q.unit||''});
+  else Object.assign(it,{opts:q.opts,c:q.c});
+  if(q.t==='match')it.items=q.items;
+  return it;
+}
+/* and back to study-pack form (export, and the examples the AI follows) */
+function packOf(q){
+  const out={type:q.t};
+  const tt=q.title||((String(q.s).match(/<p class="qtitle">([\s\S]*?)<\/p>/)||[])[1]);
+  if(tt)out.title=strip(tt);
+  out.question=q.sraw!=null?q.sraw:html2md(String(q.s).replace(/<p class="qtitle">[\s\S]*?<\/p>/,''));
+  if(q.t==='num')Object.assign(out,{answer:+q.ans,tolerance:+q.tol||0,unit:q.unit||''});
+  else if(q.t==='match')Object.assign(out,{statements:q.items.map(strip),choices:q.opts.map(strip),matches:q.c.map(k=>strip(q.opts[k]))});
+  else Object.assign(out,{options:q.opts.map(strip),correct:q.c.map(k=>strip(q.opts[k]))});
+  out.explanation=q.eraw!=null?q.eraw:html2md(q.e);
+  return out;
+}
+function packQuestion(q,label,problems){
+  const arr=v=>Array.isArray(v)?v:[], str=v=>typeof v==='string'?v.trim():(v==null?'':String(v).trim());
+  const divOf=(d,o)=>{const u=String(d||'').toUpperCase().trim();if(DIVS.includes(u))return u;const m=String(o||'').toUpperCase().match(/^(PA|PPD|PDD)\b/);return m?m[1]:'';};
+  const objOf=o=>{const m=String(o||'').match(/(\d+\.\d+)/);return m?m[1]:'';};
+  const s=str(q.question||q.stem||q.s), div=divOf(q.division||q.div,q.objective), obj=objOf(q.objective||q.obj), e=str(q.explanation||q.why||q.e), title=str(q.title);
+  label=label+(s?' (“'+s.slice(0,40)+'…”)':'');
+  const bad=m=>{problems.push(label+' '+m+' and was skipped.');return null;};
+  if(!s)return bad('has no question text');
+  if(!DIVS.includes(div))return bad('needs a division (PA, PPD or PDD)');
+  const pick=(list,w)=>{if(typeof w==='number')return w;const x=str(w);let k=list.findIndex(o=>o.toLowerCase()===x.toLowerCase());
+    if(k<0&&/^[A-Za-z]$/.test(x))k=x.toUpperCase().charCodeAt(0)-65; if(k<0&&/^\d+$/.test(x))k=+x;
+    if(k<0&&x.length>3)k=list.findIndex(o=>o.toLowerCase().startsWith(x.toLowerCase().slice(0,25))||x.toLowerCase().startsWith(o.toLowerCase().slice(0,25)));
+    return k>=0&&k<list.length?k:-1;};
+  let ty=String(q.type||'').toLowerCase();
+  const base={d:div,o:obj?div+' '+obj:div,title,s,e};
+  if(/num|fill|calc/.test(ty)||(q.answer!=null&&!arr(q.options||q.opts||q.choices).length&&!arr(q.statements).length)){
+    const v=numIn(q.answer!=null?q.answer:q.correct); if(v==null)return bad('is a fill-in question without a numeric answer');
+    const dec=(String(q.answer).replace(/[$,]/g,'').split('.')[1]||'').length, tol=numIn(q.tolerance);
+    return Object.assign(base,{t:'num',ans:v,tol:tol!=null&&tol>=0?tol:+(0.5*Math.pow(10,-dec)).toPrecision(3),unit:str(q.unit).slice(0,30)});
+  }
+  if(/match|drag/.test(ty)||arr(q.statements||q.items).length){
+    const items=arr(q.statements||q.items).map(str).filter(Boolean), opts=arr(q.choices||q.options||q.opts).map(str).filter(Boolean);
+    const c=arr(q.matches||q.correct).map(w=>pick(opts,w));
+    if(items.length<2||opts.length<2)return bad('is a matching question that needs at least two statements and two choices');
+    if(c.length!==items.length||c.some(k=>k<0))return bad('needs one right choice (from its choices) for every statement');
+    return Object.assign(base,{t:'match',items,opts,c});
+  }
+  const opts=arr(q.options||q.opts||q.choices).map(str).filter(Boolean);
+  if(opts.length<2)return bad('needs at least two options');
+  const want=arr(q.correct!=null?(Array.isArray(q.correct)?q.correct:[q.correct]):(q.answer!=null?[q.answer]:[])), c=[];
+  want.forEach(w=>{const k=pick(opts,w);if(k>=0&&!c.includes(k))c.push(k);});
+  if(!c.length)return bad('has no correct option that matches one of its options');
+  ty=/cata|all|multi/.test(ty)?'cata':(ty==='mc'?'mc':(c.length>1?'cata':'mc'));
+  if(ty==='mc'&&c.length>1){ty='cata';problems.push(label+' is marked multiple choice but has '+c.length+' correct options, so it was imported as check-all-that-apply.');}
+  return Object.assign(base,{t:ty,opts,c});
+}
 function parsePack(text){
   let t=String(text||'').replace(/^﻿/,'').trim();
   const fence=t.match(/```(?:json)?\s*([\s\S]*?)```/i); if(fence)t=fence[1].trim();
@@ -1752,26 +1819,7 @@ function parsePack(text){
     const div=divOf(c.division||c.div,c.objective), obj=objOf(c.objective||c.obj);
     P.cards.push({d:(str(c.deck)||P.title).slice(0,60),o:div&&div!=='GEN'?(obj?div+' '+obj:div):'—',q,a:an});
   });
-  arr(j.questions||j.items).forEach((q,i)=>{
-    const s=str(q.question||q.stem||q.s), opts=arr(q.options||q.opts||q.choices).map(str).filter(Boolean);
-    const div=divOf(q.division||q.div,q.objective), obj=objOf(q.objective||q.obj), e=str(q.explanation||q.why||q.e);
-    const label='Question '+(i+1)+(s?' (“'+s.slice(0,40)+'…”)':'');
-    if(!s){P.problems.push(label+' has no question text and was skipped.');return;}
-    if(opts.length<2){P.problems.push(label+' needs at least two options and was skipped.');return;}
-    if(!DIVS.includes(div)){P.problems.push(label+' needs a division (PA, PPD or PDD) and was skipped.');return;}
-    const want=arr(q.correct!=null?(Array.isArray(q.correct)?q.correct:[q.correct]):(q.answer!=null?[q.answer]:[])), c=[];
-    want.forEach(w=>{let k=-1;
-      if(typeof w==='number')k=w;
-      else{const t=str(w);k=opts.findIndex(o=>o.toLowerCase()===t.toLowerCase());
-        if(k<0&&/^[A-Za-z]$/.test(t))k=t.toUpperCase().charCodeAt(0)-65;
-        if(k<0&&/^\d+$/.test(t))k=+t;
-        if(k<0)k=opts.findIndex(o=>o.toLowerCase().startsWith(t.toLowerCase().slice(0,25)));}
-      if(k>=0&&k<opts.length&&!c.includes(k))c.push(k);});
-    if(!c.length){P.problems.push(label+' has no correct option that matches one of its options and was skipped.');return;}
-    let t=String(q.type||'').toLowerCase(); t=/cata|all|multi/.test(t)?'cata':(t==='mc'?'mc':(c.length>1?'cata':'mc'));
-    if(t==='mc'&&c.length>1){t='cata';P.problems.push(label+' is marked multiple choice but has '+c.length+' correct options, so it was imported as check-all-that-apply.');}
-    P.questions.push({d:div,o:obj?div+' '+obj:div,t,s,opts,c,e});
-  });
+  arr(j.questions||j.items).forEach((q,i)=>{const it=packQuestion(q,'Question '+(i+1),P.problems);if(it)P.questions.push(it);});
   if(!P.points.length&&!P.cards.length&&!P.questions.length&&!P.problems.length)throw new Error('The pack has no "points", "cards" or "questions" lists.');
   return P;
 }
@@ -1788,7 +1836,7 @@ function importPack(P){
   const pid='k'+Date.now().toString(36), now=Date.now(); let n={points:0,cards:0,questions:0};
   P.points.filter(x=>!x.dup).forEach(p=>{S.custom.points[newUid()]={div:p.div,obj:p.obj,text:p.text,at:now+n.points,pack:pid};n.points++;});
   P.cards.filter(x=>!x.dup).forEach(c=>{S.custom.cards[newUid()]={d:c.d,o:c.o,q:oneLine(c.q),a:md2html(c.a),qraw:c.q,araw:c.a,at:now,pack:pid};n.cards++;});
-  P.questions.filter(x=>!x.dup).forEach(q=>{S.custom.items[newUid()]={d:q.d,o:q.o,t:q.t,s:oneLine(q.s),opts:q.opts,c:q.c,e:q.e?md2html(q.e).replace(/^<p>([\s\S]*)<\/p>$/,'$1'):'',sraw:q.s,eraw:q.e,at:now,pack:pid};n.questions++;});
+  P.questions.filter(x=>!x.dup).forEach(q=>{S.custom.items[newUid()]=Object.assign(itemFromPack(q),{at:now,pack:pid});n.questions++;});
   S.custom.packs[pid]={title:P.title,at:now,counts:n};
   rebuildMaterial(); save();
   return n;
@@ -1805,7 +1853,7 @@ function exportPack(){
   return {format:'are-study-pack',version:1,title:(curProf().name||'My')+' — study material '+ds(new Date()),
     points:pts.map(p=>({division:p.div==='GEN'?'General':p.div,objective:p.obj||'',text:p.text})),
     cards:mc.map(c=>Object.assign({deck:c.d},so(c.o),{question:c.qraw!=null?c.qraw:html2md(c.q),answer:c.araw!=null?c.araw:html2md(c.a)})),
-    questions:mq.map(q=>Object.assign(so(q.o),{type:q.t,question:q.sraw!=null?q.sraw:html2md(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:q.eraw!=null?q.eraw:html2md(q.e)}))};
+    questions:mq.map(q=>Object.assign(so(q.o),packOf(q)))};
 }
 async function copyText(t,okMsg,ta){try{await navigator.clipboard.writeText(t);toast(okMsg);}catch(e){if(ta){ta.value=t;ta.select();}toast('Select the text and copy it');}}
 function downloadText(name,text){
@@ -2100,23 +2148,26 @@ function itemEl(it,idx,mode){
     else $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
     const ok=itemOk(it,s), exp=$('.exp',el);exp.hidden=false;
     exp.innerHTML='<strong style="color:'+(ok?'var(--ok)':'var(--flag)')+'">'+(ok?'Correct.':'Not quite.')+'</strong> '+it.e+(info?'<div class="learned '+info.cls+'">'+info.msg+'</div>':'');
-    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'');
+    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'')+(!ok&&!mode.loop&&mode.live?'<button type="button" class="lnk" data-act="loop">Learn it with similar questions</button>':'');
   };
+  const afterMiss=(q,s)=>{if(mode.live&&!mode.loop&&!itemOk(q,s))learnLoop(el,q,{auto:true});};
   const submit=()=>{const s=readSel();if(!complete(s)){toast(it.t==='num'?'Type a number first':it.t==='match'?'Choose a match for every statement':'Pick at least one option');return;}
-    const r=record(idx,s);showResult(s,r);refreshProg();};
+    const r=record(idx,s,mode.loop?{practice:true}:null);showResult(s,r);refreshProg();if(mode.onResult)mode.onResult(itemOk(it,s));else afterMiss(it,s);};
   if(mode.live&&S.ans[idx]&&!mode.fresh){showResult(S.ans[idx].sel);}
   else if(mode.review){showResult(mode.sel||[]);}
   else{
     mark(); fill(sel);
     if(it.t!=='mc'&&mode.live)foot.innerHTML='<button type="button" class="btn sm pri" data-act="submit">'+(it.t==='cata'?'Submit selection':'Submit answer')+'</button>';
-    if(typed&&mode.onSel){const tell=()=>mode.onSel(readSel());el.addEventListener('input',tell);el.addEventListener('change',tell);}
+    if(typed&&mode.onSel){const tell=e=>{if(e.target.closest('.qz')===el)mode.onSel(readSel());};el.addEventListener('input',tell);el.addEventListener('change',tell);}
     if(it.t==='num'&&mode.live)$('.qnumin',el).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submit();}});
   }
   el.addEventListener('click',e=>{
+    if(e.target.closest('.qz')!==el)return;   // a similar question shown inside this card handles its own clicks
     const a=e.target.closest('[data-act]');
     if(a){
       if(a.dataset.act==='reread')gotoObj(it.o);
       if(a.dataset.act==='cgdisc'){discussInChatGPT(it.id);return;}
+      if(a.dataset.act==='loop'){learnLoop(el,it);return;}
       if(a.dataset.act==='aiexp'){aiExplainItem(it,(S.ans[idx]&&S.ans[idx].sel)||mode.sel||[],el,S.mist[idx]&&!S.mist[idx].fixed?idx:null);return;}
       if(a.dataset.act==='edit'){itemEditor(it,()=>{const nw=ITEM(it.id);if(nw)el.replaceWith(itemEl(nw,nw.id,mode));else el.remove();});return;}
       if(a.dataset.act==='retry'){el.replaceWith(itemEl(it,idx,Object.assign({},mode,{fresh:true})));}
@@ -2126,18 +2177,19 @@ function itemEl(it,idx,mode){
     const b=e.target.closest('.opt');if(!b||b.disabled)return;
     const i=+b.dataset.i;
     if(it.t==='mc'){sel=[i];}else{sel=sel.includes(i)?sel.filter(x=>x!==i):sel.concat(i);}
-    if(mode.live&&it.t==='mc'){const r=record(idx,sel);showResult(sel,r);refreshProg();return;}
+    if(mode.live&&it.t==='mc'){const r=record(idx,sel,mode.loop?{practice:true}:null);showResult(sel,r);refreshProg();if(mode.onResult)mode.onResult(itemOk(it,sel));else afterMiss(it,sel);return;}
     mark();
     if(mode.onSel)mode.onSel(sel.slice());
   });
   return el;
 }
 /* record an answer and learn from it; returns {cls,msg} describing what the system did */
-function record(idx,sel){
+function record(idx,sel,o){
   const it=ITEM(idx), ok=itemOk(it,sel), now=Date.now();
   S.ans[idx]={sel:sel.slice(),ok:ok,at:now};
   let out=null;
   const m=S.mist[idx];
+  if(o&&o.practice){logAct();save();return null;}   // a similar question in a learning loop: scored, not logged as a mistake
   if(!ok){
     const e=m||{n:0,note:''};
     e.n++; e.sel=sel.slice(); e.at=now; e.stage=0; e.due=now+MGAP[0]; e.fixed=false;
@@ -2246,6 +2298,7 @@ function initMistakes(){
     if(b.dataset.act==='reread')gotoObj(ITEM(i).o);
     if(b.dataset.act==='cards')go('cards',{obj:ITEM(i).o});
     if(b.dataset.act==='cgdisc'){discussInChatGPT(i);return;}
+    if(b.dataset.act==='loop'){learnLoop(b.closest('.mk'),ITEM(i));return;}
     if(b.dataset.act==='aiexp')aiExplainItem(ITEM(i),S.mist[i].sel||[],b.closest('.mk'),i);};
   let nt=null;
   list.oninput=e=>{const ta=e.target.closest('textarea[data-i]');if(!ta)return;S.mist[ta.dataset.i].note=ta.value.slice(0,1000);clearTimeout(nt);nt=setTimeout(save,700);};
@@ -2259,12 +2312,12 @@ function mkEl(i,cls){
   const it=ITEM(i), m=S.mist[i];
   const opt=arr=>esc(ansText(it,arr));
   const steps='<span class="steps" title="Right answers on schedule">'+[0,1,2].map(k=>'<i class="'+((m.fixed||k<m.stage)?'on':'')+'"></i>').join('')+'</span>';
-  return '<div class="mk '+cls+'"><div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>missed '+m.n+'×</span><span>·</span><span>'+(m.fixed?'fixed':'next '+whenStr(m.due))+'</span>'+steps+'</div>'+
+  return '<div class="mk '+cls+'"><div class="meta"><span class="pill '+it.d.toLowerCase()+'">'+it.d+'</span><span>'+esc(it.o)+'</span><span>·</span><span>missed '+m.n+'×</span><span>·</span><span>'+(m.fixed?'fixed':'next '+whenStr(m.due))+'</span>'+steps+(S.loops&&S.loops[i]&&S.loops[i].done?'<span class="chip c-ok" title="You got '+LOOP_NEED+' similar questions right in a row">similar ✓</span>':'')+'</div>'+
     '<div class="stem">'+it.s+'</div>'+
     '<dl class="pick"><dt>You picked</dt><dd class="no">'+opt(m.sel||[])+'</dd><dt>Answer</dt><dd class="yes">'+esc(rightText(it))+'</dd></dl>'+
     '<details><summary>Why — the trap</summary><p class="small" style="margin:0">'+it.e+'</p></details>'+
     '<textarea data-i="'+i+'" id="note-'+i+'" placeholder="Your note: why did you pick it, and what will you check next time?" aria-label="Your note">'+esc(m.note||'')+'</textarea>'+
-    '<div class="foot">'+(m.fixed?'':'<button type="button" class="lnk" data-act="retry" data-i="'+i+'">Answer it again</button>')+(AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp" data-i="'+i+'">Explain with '+AI_NAME()+'</button>':'')+(CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc" data-i="'+i+'">Discuss in ChatGPT</button>':'')+'<button type="button" class="lnk" data-act="reread" data-i="'+i+'">Reread '+esc(it.o)+'</button>'+(CARDS.some(c=>c.o===it.o)?'<button type="button" class="lnk" data-act="cards" data-i="'+i+'">Drill '+esc(it.o)+' cards</button>':'')+'</div></div>';
+    '<div class="foot">'+(m.fixed?'':'<button type="button" class="lnk" data-act="retry" data-i="'+i+'">Answer it again</button>')+(AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp" data-i="'+i+'">Explain with '+AI_NAME()+'</button>':'')+(CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc" data-i="'+i+'">Discuss in ChatGPT</button>':'')+(m.fixed?'':'<button type="button" class="lnk" data-act="loop" data-i="'+i+'">Learn it with similar questions</button>')+'<button type="button" class="lnk" data-act="reread" data-i="'+i+'">Reread '+esc(it.o)+'</button>'+(CARDS.some(c=>c.o===it.o)?'<button type="button" class="lnk" data-act="cards" data-i="'+i+'">Drill '+esc(it.o)+' cards</button>':'')+'</div></div>';
 }
 
 /* ================= PLAN ================= */
@@ -2674,11 +2727,24 @@ function aiExplainCard(c,host){
 }
 
 /* ---------- 3. generate cards and questions (drafts go through the study-pack preview) ---------- */
+/* one question in any of the four formats (only the fields of its type are used) */
+const Q_SCHEMA={type:'object',additionalProperties:false,required:['division','objective','type','title','question','explanation'],properties:{
+  division:{type:'string'},objective:{type:'string'},type:{type:'string',enum:['mc','cata','num','match']},title:{type:'string'},question:{type:'string'},
+  options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'}},
+  answer:{type:'number'},tolerance:{type:'number'},unit:{type:'string'},
+  statements:{type:'array',items:{type:'string'}},choices:{type:'array',items:{type:'string'}},matches:{type:'array',items:{type:'string'}},
+  explanation:{type:'string'}}};
+const FORMAT_RULES='Question formats (use the field names exactly):\n'+
+  '- "mc": 4 options, exactly one correct; "correct" repeats the right option text.\n'+
+  '- "cata" (check all that apply): 5–6 options, 2 or more correct; the question says how many to check.\n'+
+  '- "num" (fill in the number): no options; "answer" is the number, "unit" its unit ("" if none), "tolerance" the accepted difference for rounding; the question says what to round to.\n'+
+  '- "match" (drag and drop): 3–6 "statements" and 3–6 "choices"; "matches" gives the right choice text for each statement, in order (a choice may be used more than once).\n'+
+  'Every question: a short "title" naming the concept; a realistic scenario in the current NCARB style (a building, a client, a constraint) rather than a bare definition; an "explanation" that gives the rule that decides it, why each trap is wrong ("- A → …" lines for options), the working for calculations, and a "Reference:" line when you know the source.';
 const PACK_SCHEMA={type:'object',additionalProperties:false,required:['title','points','cards','questions'],properties:{
   title:{type:'string'},
   points:{type:'array',items:{type:'object',additionalProperties:false,required:['division','objective','text'],properties:{division:{type:'string'},objective:{type:'string'},text:{type:'string'}}}},
   cards:{type:'array',items:{type:'object',additionalProperties:false,required:['deck','division','objective','question','answer'],properties:{deck:{type:'string'},division:{type:'string'},objective:{type:'string'},question:{type:'string'},answer:{type:'string'}}}},
-  questions:{type:'array',items:{type:'object',additionalProperties:false,required:['division','objective','type','question','options','correct','explanation'],properties:{division:{type:'string'},objective:{type:'string'},type:{type:'string',enum:['mc','cata']},question:{type:'string'},options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'}},explanation:{type:'string'}}}}}};
+  questions:{type:'array',items:Q_SCHEMA}}};
 function objectiveOptions(sel){
   objTitle('PA 1.1'); // builds the objective list
   return Object.keys(OBJT).sort((a,b)=>DIVS.indexOf(a.split(' ')[0])-DIVS.indexOf(b.split(' ')[0])||parseFloat(a.split(' ')[1])-parseFloat(b.split(' ')[1]))
@@ -2693,6 +2759,7 @@ function openGenerate(preset,done){
     '<p class="small">'+AI_NAME()+' drafts cards and questions; you review them before anything is added to your material.</p>'+(preset.doc?'<div class="impv"><b>From your document: '+esc(preset.doc.name)+'</b><p class="small" style="margin:4px 0 0">Give a topic to focus on part of it. Without one, '+AI_NAME()+' works from its first pages.</p></div>':'')+
     '<form class="edf" id="genForm"><div class="edrow"><label class="af" style="flex:2 1 260px"><span>Objective</span><select class="sel" id="genObj"><option value="">Any — use the topic or notes below</option>'+objectiveOptions(preset.obj||'')+'</select></label>'+
     '<label class="af" style="flex:1 1 150px"><span>Make</span><select class="sel" id="genKind"><option value="both">Cards and questions</option><option value="cards"'+(preset.kind==='cards'?' selected':'')+'>Flashcards only</option><option value="questions"'+(preset.kind==='questions'?' selected':'')+'>Questions only</option></select></label>'+
+    '<label class="af" style="flex:1 1 170px"><span>Question formats</span><select class="sel" id="genFmt"><option value="mix">Mix: same concept, several formats</option><option value="mc">Multiple choice</option><option value="cata">Check all that apply</option><option value="num">Fill in the number</option><option value="match">Drag and drop (matching)</option></select></label>'+
     '<label class="af" style="flex:0 1 100px"><span>How many</span><select class="sel" id="genN"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></label></div>'+
     '<label class="af"><span>Topic (optional)</span><input id="genTopic" placeholder="e.g. exit separation, flashing at shelf angles"></label>'+
     '<label class="af"><span>Your notes to work from (optional)</span><textarea id="genNotes" rows="5" placeholder="Paste notes, a textbook passage, or a list of facts"></textarea></label>'+
@@ -2702,12 +2769,12 @@ function openGenerate(preset,done){
     const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(); let notes=$('#genNotes',m).value.trim();
     if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'â€¦</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldnâ€™t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
     if(!obj&&!topic&&!notes){$('#genMsg',m).innerHTML='<div class="aerr">Choose an objective, or give a topic or notes.</div>';return;}
-    const ex=ITEMS.filter(q=>(!obj||q.o===obj)&&(q.t==='mc'||q.t==='cata')).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
+    const fmt=$('#genFmt',m).value, ex=styleExamples(obj,preset.doc?null:obj?obj.split(' ')[0]:null).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
     const prompt='Write '+want+' for the ARE study pack'+(obj?' on objective '+obj+' ('+objTitle(obj)+')':'')+(topic?', topic: '+topic:'')+'.\n'+
       'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:'PA, PPD or PDD as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+
-      'Cards: a prompt and a complete answer (full lists where the exam tests lists). Questions: current NCARB style; "mc" has 4 options and exactly one correct, "cata" has 5–6 options and 2+ correct; "correct" repeats the exact option text; the explanation says why each trap is wrong. Deck: "'+(obj||'My')+' · '+AI_NAME()+'"; title: a short name for this batch.\n'+
-      'Do not repeat questions I already have'+(ex?', such as:\n'+ex:'')+'.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them'+(preset.doc?' (from my document "'+preset.doc.name+'"; put the page in the explanation where it helps)':'')+':\n'+notes.slice(0,24000):'');
+      'Cards: a prompt and a complete answer (full lists where the exam tests lists).\n'+FORMAT_RULES+'\n'+(fmt==='mix'?'Use more than one format: write each key concept in at least two different formats where it fits (for example a multiple-choice scenario and a matching or fill-in-the-number question on the same rule). Use "num" only for real calculations.':'Write every question in the "'+fmt+'" format.')+'\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+'\nDeck: "'+(obj||'My')+' · '+AI_NAME()+'"; title: a short name for this batch.\n'+
+      'Do not repeat the example questions or any question I already have.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them'+(preset.doc?' (from my document "'+preset.doc.name+'"; put the page in the explanation where it helps)':'')+':\n'+notes.slice(0,24000):'');
     $('#genActs',m).innerHTML='<p class="small" style="margin:0">'+AI_NAME()+' is writing… this can take up to a minute.</p><button type="button" class="btn" data-a="close">Cancel</button>';
     m._ctl=new AbortController();
     try{
@@ -2718,6 +2785,77 @@ function openGenerate(preset,done){
 }
 /* open the import preview pre-filled (used for Claude drafts) */
 function openImportWith(text,done){openImport(done);const t=$('#imText');if(t){t.value=text;$('#modal').querySelector('[data-a="check"]').click();}}
+
+/* example questions for the AI to imitate: the objective's own first, then the division, one of each format where possible */
+function styleExamples(obj,div){
+  const pool=ITEMS.filter(q=>!q.mine&&(obj?q.o===obj:div?q.d===div:true)), more=ITEMS.filter(q=>!q.mine&&div&&q.d===div&&!pool.includes(q));
+  const out=[]; ['mc','cata','num','match'].forEach(ty=>{const q=pool.find(x=>x.t===ty)||more.find(x=>x.t===ty);if(q)out.push(q);});
+  return out.slice(0,4);
+}
+
+/* ---------- 3b. learn it: after a miss, similar questions until two in a row are right ----------
+   Each round asks about the same concept in a new situation and, where it fits, a different format.
+   With ChatGPT or Claude in the page the questions are written fresh; otherwise other bank questions on the objective
+   are used. Similar questions are scored but don't enter the mistake log; the missed question itself still comes back
+   on its 1-, 3- and 7-day schedule until it is fixed. */
+const LOOP_NEED=2;
+const loopOf=id=>{S.loops=S.loops||{};return S.loops[id]=S.loops[id]||{streak:0,tries:0,done:false};};
+function learnLoop(host,it,o){
+  o=o||{};
+  if(!host||!it)return;
+  if(o.auto&&!aiReady()&&!bankSimilar(it,[]).length)return;   // nothing to offer: stay quiet after a miss
+  let box=host.querySelector(':scope > .loop'); if(box)box.remove();
+  box=document.createElement('div'); box.className='loop'; host.appendChild(box);
+  const st=loopOf(it.id); st.streak=0; st.done=false; st.started=Date.now(); save();
+  const seen=[it.id]; let round=0, ctl=null, ahead=null;
+  const head=()=>'<div class="loophd"><b>Learn it</b><span class="small">'+esc(it.o)+' · '+(st.streak?st.streak+' of '+LOOP_NEED+' right in a row':LOOP_NEED+' right in a row to finish')+'</span><button type="button" class="lnk" data-loop="stop">Stop</button></div>';
+  box.onclick=e=>{const b=e.target.closest('[data-loop]');if(!b)return;
+    if(b.dataset.loop==='stop'){if(ctl)ctl.abort();box.remove();}
+    if(b.dataset.loop==='next')next();
+    if(b.dataset.loop==='connect')openClaudeSettings();};
+  const fetchOne=r=>{const c=new AbortController();const p=similarQuestion(it,r,seen,c.signal);return {c,p};};
+  async function next(){
+    round++;
+    box.innerHTML=head()+'<p class="small loopwait">Writing a similar question'+(aiReady()?' with '+AI_NAME():'')+'…</p>';
+    const job=ahead||fetchOne(round); ahead=null; ctl=job.c;
+    let q; try{q=await job.p;}catch(err){if(err&&err.aborted)return;box.innerHTML=head()+'<div class="aerr">'+esc(err.message||String(err))+'</div><div class="row"><button type="button" class="btn sm" data-loop="next">Try again</button></div>';round--;return;}
+    if(!q){box.innerHTML=head()+'<p class="small">No more questions on '+esc(it.o)+' in the bank. <button type="button" class="lnk" data-loop="connect">Connect ChatGPT</button> (or use the claude.ai link) to get new ones written for you.</p>';return;}
+    seen.push(q.id);
+    box.innerHTML=head()+'<p class="small loopnote">Similar question '+round+(q.mine?' · written for you':' · from the bank')+(q.t!==it.t?' · '+qTypeName(q).toLowerCase():'')+'</p>';
+    const qe=itemEl(q,q.id,{live:true,fresh:true,loop:it.id,onResult:ok=>{
+      st.tries++; st.streak=ok?st.streak+1:0; st.last=Date.now();
+      if(st.streak>=LOOP_NEED){st.done=true;st.doneAt=Date.now();}
+      save(); box.querySelector('.loophd').outerHTML=head();
+      const m=S.mist[it.id];
+      box.insertAdjacentHTML('beforeend',st.done?'<div class="learned good"><strong>Learned for now.</strong> '+LOOP_NEED+' similar questions right in a row.'+(m&&!m.fixed?' The original comes back '+whenStr(m.due)+' to make sure it sticks.':'')+'</div>':
+        '<div class="row loopnext"><button type="button" class="btn sm pri" data-loop="next">Next similar question</button><span class="small">'+(ok?'Good. One more like it.':'Not yet. Here comes another one on the same idea.')+'</span></div>');
+      if(!st.done&&aiReady())ahead=fetchOne(round+1);   // write the next one while the explanation is read
+    }});
+    qe.id='loop-'+q.id; box.appendChild(qe);
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  next();
+}
+/* other bank questions on the same objective, not yet answered right, least recently seen first */
+function bankSimilar(it,seen){
+  return ITEMS.filter(q=>q.o===it.o&&!seen.includes(q.id)&&q.id!==it.id&&!(S.ans[q.id]&&S.ans[q.id].ok)).sort((a,b)=>((S.ans[a.id]||{}).at||0)-((S.ans[b.id]||{}).at||0));
+}
+const FORMAT_CYCLE=['mc','cata','num','match'];
+async function similarQuestion(it,round,seen,signal){
+  if(!aiReady()){const q=bankSimilar(it,seen)[0];return q||null;}
+  const a=S.ans[it.id], prefer=FORMAT_CYCLE[(FORMAT_CYCLE.indexOf(it.t)+round)%4];
+  const made=Object.values((S.custom&&S.custom.items)||{}).filter(x=>x.src===it.id).map(x=>strip(x.s).slice(0,160));
+  const prompt='The student missed this practice question ('+it.o+', '+objTitle(it.o)+'):\n'+JSON.stringify(packOf(it))+
+    '\nTheir answer: '+ansText(it,a?a.sel:[])+'\n\n'+
+    'Write ONE new question that tests the same concept and the same trap, in a different situation (another building type, client or numbers), so they can show they really understand it. '+
+    'Prefer the "'+prefer+'" format; if that format doesn\'t suit this concept, use another one. Keep the style of the original.\n'+FORMAT_RULES+
+    '\nUse division "'+it.d+'" and objective "'+(it.o.split(' ')[1]||'')+'".'+(made.length?'\nDon\'t repeat these earlier similar questions:\n- '+made.join('\n- '):'');
+  const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:8000,schema:Q_SCHEMA,signal});
+  const probs=[], p=packQuestion(Object.assign({},j,{division:it.d,objective:it.o}),'The similar question',probs);
+  if(!p)throw Object.assign(new Error((probs[0]||'The similar question came back incomplete')+' Try again.'),{ai:true});
+  const id=newUid(); customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),src:it.id,gen:'similar'}));
+  return ITEM(id);
+}
 
 /* ---------- 4. personal study plan ---------- */
 const PLAN_SCHEMA={type:'object',additionalProperties:false,required:['summary','weeks'],properties:{summary:{type:'string'},

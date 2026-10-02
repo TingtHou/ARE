@@ -324,11 +324,24 @@ function aiExplainCard(c,host){
 }
 
 /* ---------- 3. generate cards and questions (drafts go through the study-pack preview) ---------- */
+/* one question in any of the four formats (only the fields of its type are used) */
+const Q_SCHEMA={type:'object',additionalProperties:false,required:['division','objective','type','title','question','explanation'],properties:{
+  division:{type:'string'},objective:{type:'string'},type:{type:'string',enum:['mc','cata','num','match']},title:{type:'string'},question:{type:'string'},
+  options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'}},
+  answer:{type:'number'},tolerance:{type:'number'},unit:{type:'string'},
+  statements:{type:'array',items:{type:'string'}},choices:{type:'array',items:{type:'string'}},matches:{type:'array',items:{type:'string'}},
+  explanation:{type:'string'}}};
+const FORMAT_RULES='Question formats (use the field names exactly):\n'+
+  '- "mc": 4 options, exactly one correct; "correct" repeats the right option text.\n'+
+  '- "cata" (check all that apply): 5–6 options, 2 or more correct; the question says how many to check.\n'+
+  '- "num" (fill in the number): no options; "answer" is the number, "unit" its unit ("" if none), "tolerance" the accepted difference for rounding; the question says what to round to.\n'+
+  '- "match" (drag and drop): 3–6 "statements" and 3–6 "choices"; "matches" gives the right choice text for each statement, in order (a choice may be used more than once).\n'+
+  'Every question: a short "title" naming the concept; a realistic scenario in the current NCARB style (a building, a client, a constraint) rather than a bare definition; an "explanation" that gives the rule that decides it, why each trap is wrong ("- A → …" lines for options), the working for calculations, and a "Reference:" line when you know the source.';
 const PACK_SCHEMA={type:'object',additionalProperties:false,required:['title','points','cards','questions'],properties:{
   title:{type:'string'},
   points:{type:'array',items:{type:'object',additionalProperties:false,required:['division','objective','text'],properties:{division:{type:'string'},objective:{type:'string'},text:{type:'string'}}}},
   cards:{type:'array',items:{type:'object',additionalProperties:false,required:['deck','division','objective','question','answer'],properties:{deck:{type:'string'},division:{type:'string'},objective:{type:'string'},question:{type:'string'},answer:{type:'string'}}}},
-  questions:{type:'array',items:{type:'object',additionalProperties:false,required:['division','objective','type','question','options','correct','explanation'],properties:{division:{type:'string'},objective:{type:'string'},type:{type:'string',enum:['mc','cata']},question:{type:'string'},options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'}},explanation:{type:'string'}}}}}};
+  questions:{type:'array',items:Q_SCHEMA}}};
 function objectiveOptions(sel){
   objTitle('PA 1.1'); // builds the objective list
   return Object.keys(OBJT).sort((a,b)=>DIVS.indexOf(a.split(' ')[0])-DIVS.indexOf(b.split(' ')[0])||parseFloat(a.split(' ')[1])-parseFloat(b.split(' ')[1]))
@@ -343,6 +356,7 @@ function openGenerate(preset,done){
     '<p class="small">'+AI_NAME()+' drafts cards and questions; you review them before anything is added to your material.</p>'+(preset.doc?'<div class="impv"><b>From your document: '+esc(preset.doc.name)+'</b><p class="small" style="margin:4px 0 0">Give a topic to focus on part of it. Without one, '+AI_NAME()+' works from its first pages.</p></div>':'')+
     '<form class="edf" id="genForm"><div class="edrow"><label class="af" style="flex:2 1 260px"><span>Objective</span><select class="sel" id="genObj"><option value="">Any — use the topic or notes below</option>'+objectiveOptions(preset.obj||'')+'</select></label>'+
     '<label class="af" style="flex:1 1 150px"><span>Make</span><select class="sel" id="genKind"><option value="both">Cards and questions</option><option value="cards"'+(preset.kind==='cards'?' selected':'')+'>Flashcards only</option><option value="questions"'+(preset.kind==='questions'?' selected':'')+'>Questions only</option></select></label>'+
+    '<label class="af" style="flex:1 1 170px"><span>Question formats</span><select class="sel" id="genFmt"><option value="mix">Mix: same concept, several formats</option><option value="mc">Multiple choice</option><option value="cata">Check all that apply</option><option value="num">Fill in the number</option><option value="match">Drag and drop (matching)</option></select></label>'+
     '<label class="af" style="flex:0 1 100px"><span>How many</span><select class="sel" id="genN"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></label></div>'+
     '<label class="af"><span>Topic (optional)</span><input id="genTopic" placeholder="e.g. exit separation, flashing at shelf angles"></label>'+
     '<label class="af"><span>Your notes to work from (optional)</span><textarea id="genNotes" rows="5" placeholder="Paste notes, a textbook passage, or a list of facts"></textarea></label>'+
@@ -352,12 +366,12 @@ function openGenerate(preset,done){
     const obj=$('#genObj',m).value, kind=$('#genKind',m).value, n=+$('#genN',m).value, topic=$('#genTopic',m).value.trim(); let notes=$('#genNotes',m).value.trim();
     if(preset.doc&&!notes){$('#genActs',m).innerHTML='<p class="small" style="margin:0">Reading '+esc(preset.doc.name)+'â€¦</p>';notes=await docText(preset.doc.id,topic).catch(()=>'');if(!notes){$('#genMsg',m).innerHTML='<div class="aerr">Couldnâ€™t read that document. Try again.</div>';$('#genActs',m).innerHTML='<button type="submit" class="btn pri">Try again</button><button type="button" class="btn" data-a="close">Cancel</button>';return;}}
     if(!obj&&!topic&&!notes){$('#genMsg',m).innerHTML='<div class="aerr">Choose an objective, or give a topic or notes.</div>';return;}
-    const ex=ITEMS.filter(q=>(!obj||q.o===obj)&&(q.t==='mc'||q.t==='cata')).slice(0,2).map(q=>JSON.stringify({question:strip(q.s),options:q.opts,correct:q.c.map(k=>q.opts[k]),explanation:strip(q.e)})).join('\n');
+    const fmt=$('#genFmt',m).value, ex=styleExamples(obj,preset.doc?null:obj?obj.split(' ')[0]:null).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
     const want=kind==='cards'?n+' flashcards and no questions':kind==='questions'?n+' practice questions and no flashcards':Math.ceil(n/2)+' flashcards and '+Math.floor(n/2+0.5)+' practice questions';
     const prompt='Write '+want+' for the ARE study pack'+(obj?' on objective '+obj+' ('+objTitle(obj)+')':'')+(topic?', topic: '+topic:'')+'.\n'+
       'Leave "points" empty. Use division "'+(obj?obj.split(' ')[0]:'PA, PPD or PDD as fits')+'" and objective "'+(obj?obj.split(' ')[1]:'the best-fitting number like 2.2')+'".\n'+
-      'Cards: a prompt and a complete answer (full lists where the exam tests lists). Questions: current NCARB style; "mc" has 4 options and exactly one correct, "cata" has 5–6 options and 2+ correct; "correct" repeats the exact option text; the explanation says why each trap is wrong. Deck: "'+(obj||'My')+' · '+AI_NAME()+'"; title: a short name for this batch.\n'+
-      'Do not repeat questions I already have'+(ex?', such as:\n'+ex:'')+'.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them'+(preset.doc?' (from my document "'+preset.doc.name+'"; put the page in the explanation where it helps)':'')+':\n'+notes.slice(0,24000):'');
+      'Cards: a prompt and a complete answer (full lists where the exam tests lists).\n'+FORMAT_RULES+'\n'+(fmt==='mix'?'Use more than one format: write each key concept in at least two different formats where it fits (for example a multiple-choice scenario and a matching or fill-in-the-number question on the same rule). Use "num" only for real calculations.':'Write every question in the "'+fmt+'" format.')+'\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+'\nDeck: "'+(obj||'My')+' · '+AI_NAME()+'"; title: a short name for this batch.\n'+
+      'Do not repeat the example questions or any question I already have.'+(notes?'\n\nBase everything on these notes, and do not add facts that contradict them'+(preset.doc?' (from my document "'+preset.doc.name+'"; put the page in the explanation where it helps)':'')+':\n'+notes.slice(0,24000):'');
     $('#genActs',m).innerHTML='<p class="small" style="margin:0">'+AI_NAME()+' is writing… this can take up to a minute.</p><button type="button" class="btn" data-a="close">Cancel</button>';
     m._ctl=new AbortController();
     try{
@@ -368,6 +382,77 @@ function openGenerate(preset,done){
 }
 /* open the import preview pre-filled (used for Claude drafts) */
 function openImportWith(text,done){openImport(done);const t=$('#imText');if(t){t.value=text;$('#modal').querySelector('[data-a="check"]').click();}}
+
+/* example questions for the AI to imitate: the objective's own first, then the division, one of each format where possible */
+function styleExamples(obj,div){
+  const pool=ITEMS.filter(q=>!q.mine&&(obj?q.o===obj:div?q.d===div:true)), more=ITEMS.filter(q=>!q.mine&&div&&q.d===div&&!pool.includes(q));
+  const out=[]; ['mc','cata','num','match'].forEach(ty=>{const q=pool.find(x=>x.t===ty)||more.find(x=>x.t===ty);if(q)out.push(q);});
+  return out.slice(0,4);
+}
+
+/* ---------- 3b. learn it: after a miss, similar questions until two in a row are right ----------
+   Each round asks about the same concept in a new situation and, where it fits, a different format.
+   With ChatGPT or Claude in the page the questions are written fresh; otherwise other bank questions on the objective
+   are used. Similar questions are scored but don't enter the mistake log; the missed question itself still comes back
+   on its 1-, 3- and 7-day schedule until it is fixed. */
+const LOOP_NEED=2;
+const loopOf=id=>{S.loops=S.loops||{};return S.loops[id]=S.loops[id]||{streak:0,tries:0,done:false};};
+function learnLoop(host,it,o){
+  o=o||{};
+  if(!host||!it)return;
+  if(o.auto&&!aiReady()&&!bankSimilar(it,[]).length)return;   // nothing to offer: stay quiet after a miss
+  let box=host.querySelector(':scope > .loop'); if(box)box.remove();
+  box=document.createElement('div'); box.className='loop'; host.appendChild(box);
+  const st=loopOf(it.id); st.streak=0; st.done=false; st.started=Date.now(); save();
+  const seen=[it.id]; let round=0, ctl=null, ahead=null;
+  const head=()=>'<div class="loophd"><b>Learn it</b><span class="small">'+esc(it.o)+' · '+(st.streak?st.streak+' of '+LOOP_NEED+' right in a row':LOOP_NEED+' right in a row to finish')+'</span><button type="button" class="lnk" data-loop="stop">Stop</button></div>';
+  box.onclick=e=>{const b=e.target.closest('[data-loop]');if(!b)return;
+    if(b.dataset.loop==='stop'){if(ctl)ctl.abort();box.remove();}
+    if(b.dataset.loop==='next')next();
+    if(b.dataset.loop==='connect')openClaudeSettings();};
+  const fetchOne=r=>{const c=new AbortController();const p=similarQuestion(it,r,seen,c.signal);return {c,p};};
+  async function next(){
+    round++;
+    box.innerHTML=head()+'<p class="small loopwait">Writing a similar question'+(aiReady()?' with '+AI_NAME():'')+'…</p>';
+    const job=ahead||fetchOne(round); ahead=null; ctl=job.c;
+    let q; try{q=await job.p;}catch(err){if(err&&err.aborted)return;box.innerHTML=head()+'<div class="aerr">'+esc(err.message||String(err))+'</div><div class="row"><button type="button" class="btn sm" data-loop="next">Try again</button></div>';round--;return;}
+    if(!q){box.innerHTML=head()+'<p class="small">No more questions on '+esc(it.o)+' in the bank. <button type="button" class="lnk" data-loop="connect">Connect ChatGPT</button> (or use the claude.ai link) to get new ones written for you.</p>';return;}
+    seen.push(q.id);
+    box.innerHTML=head()+'<p class="small loopnote">Similar question '+round+(q.mine?' · written for you':' · from the bank')+(q.t!==it.t?' · '+qTypeName(q).toLowerCase():'')+'</p>';
+    const qe=itemEl(q,q.id,{live:true,fresh:true,loop:it.id,onResult:ok=>{
+      st.tries++; st.streak=ok?st.streak+1:0; st.last=Date.now();
+      if(st.streak>=LOOP_NEED){st.done=true;st.doneAt=Date.now();}
+      save(); box.querySelector('.loophd').outerHTML=head();
+      const m=S.mist[it.id];
+      box.insertAdjacentHTML('beforeend',st.done?'<div class="learned good"><strong>Learned for now.</strong> '+LOOP_NEED+' similar questions right in a row.'+(m&&!m.fixed?' The original comes back '+whenStr(m.due)+' to make sure it sticks.':'')+'</div>':
+        '<div class="row loopnext"><button type="button" class="btn sm pri" data-loop="next">Next similar question</button><span class="small">'+(ok?'Good. One more like it.':'Not yet. Here comes another one on the same idea.')+'</span></div>');
+      if(!st.done&&aiReady())ahead=fetchOne(round+1);   // write the next one while the explanation is read
+    }});
+    qe.id='loop-'+q.id; box.appendChild(qe);
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  next();
+}
+/* other bank questions on the same objective, not yet answered right, least recently seen first */
+function bankSimilar(it,seen){
+  return ITEMS.filter(q=>q.o===it.o&&!seen.includes(q.id)&&q.id!==it.id&&!(S.ans[q.id]&&S.ans[q.id].ok)).sort((a,b)=>((S.ans[a.id]||{}).at||0)-((S.ans[b.id]||{}).at||0));
+}
+const FORMAT_CYCLE=['mc','cata','num','match'];
+async function similarQuestion(it,round,seen,signal){
+  if(!aiReady()){const q=bankSimilar(it,seen)[0];return q||null;}
+  const a=S.ans[it.id], prefer=FORMAT_CYCLE[(FORMAT_CYCLE.indexOf(it.t)+round)%4];
+  const made=Object.values((S.custom&&S.custom.items)||{}).filter(x=>x.src===it.id).map(x=>strip(x.s).slice(0,160));
+  const prompt='The student missed this practice question ('+it.o+', '+objTitle(it.o)+'):\n'+JSON.stringify(packOf(it))+
+    '\nTheir answer: '+ansText(it,a?a.sel:[])+'\n\n'+
+    'Write ONE new question that tests the same concept and the same trap, in a different situation (another building type, client or numbers), so they can show they really understand it. '+
+    'Prefer the "'+prefer+'" format; if that format doesn\'t suit this concept, use another one. Keep the style of the original.\n'+FORMAT_RULES+
+    '\nUse division "'+it.d+'" and objective "'+(it.o.split(' ')[1]||'')+'".'+(made.length?'\nDon\'t repeat these earlier similar questions:\n- '+made.join('\n- '):'');
+  const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:8000,schema:Q_SCHEMA,signal});
+  const probs=[], p=packQuestion(Object.assign({},j,{division:it.d,objective:it.o}),'The similar question',probs);
+  if(!p)throw Object.assign(new Error((probs[0]||'The similar question came back incomplete')+' Try again.'),{ai:true});
+  const id=newUid(); customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),src:it.id,gen:'similar'}));
+  return ITEM(id);
+}
 
 /* ---------- 4. personal study plan ---------- */
 const PLAN_SCHEMA={type:'object',additionalProperties:false,required:['summary','weeks'],properties:{summary:{type:'string'},
