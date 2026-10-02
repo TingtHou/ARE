@@ -18,6 +18,7 @@ const PAGES=[
  {id:'pdd',g:'Notes',n:'Development & Docs',i:'PDD'},
  {id:'numbers',g:'Notes',n:'Numbers',i:'#'},
  {id:'mine',g:'Notes',n:'My material',i:'+'},
+ {id:'aihelp',g:'Help',n:'AI setup',i:'AI'},
  {id:'div-pa',g:'',n:'Programming & Analysis · all',i:'PA',hidden:true},
  {id:'div-ppd',g:'',n:'Planning & Design · all',i:'PPD',hidden:true},
  {id:'div-pdd',g:'',n:'Development & Docs · all',i:'PDD',hidden:true}
@@ -325,6 +326,7 @@ function go(id,opts){
   else if(id==='mistakes')initMistakes();
   else if(id==='plan')initPlan();
   else if(id==='mine')initMine(opts);
+  else if(id==='aihelp')initAiHelp();
   else if(id.startsWith('div-'))initDivision(id.slice(4).toUpperCase());
   else initNotes(id);
 }

@@ -146,6 +146,53 @@ function chatgptConnSection(){
     '<div class="row"><button type="button" class="btn" data-a="cgconndone">'+(done?'Added ✓':'I’ve added it')+'</button></div></div>';
 }
 
+/* ---------- the AI setup page (#aihelp): every way to connect, step by step ---------- */
+function initAiHelp(){
+  const chip=(on,yes,no)=>'<span class="chip '+(on?'c-ok':'c-un')+'">'+(on?yes:no)+'</span>';
+  const lsOn=k=>{try{return !!localStorage.getItem(k);}catch(e){return false;}};
+  const g=CG.st, gOn=cgReady();
+  const head='<div class="eyebrow">Help</div><h1 class="t">AI setup</h1><p class="lede">Study with ChatGPT or Claude on your own plan. There are no API keys and nothing extra to pay, and everything the AI records goes to your study account.</p>';
+  if(AI_MODE==='plan'){view.innerHTML=head+'<div class="aisec"><div class="aisech"><b>Claude on your claude.ai plan</b>'+chip(!!SAMPLE,'Ready','Not available here')+'</div><p class="small">On this claude.ai version, the chat panel and the “with Claude” buttons use your own claude.ai plan. The first time, claude.ai asks you to allow this page. ChatGPT, the connectors and My library are on the study website.</p><div class="row"><button type="button" class="btn pri" data-h="chat">Open the chat</button></div></div>';
+    view.onclick=e=>{if(e.target.closest('[data-h="chat"]'))openChat();};return;}
+  if(!AUTH_ON){view.innerHTML=head+'<p class="small">AI features need the study website with accounts. Sign in first.</p>';return;}
+  view.innerHTML=head+
+    '<div class="aistat">'+
+      '<div><b>ChatGPT here</b>'+chip(gOn,'Connected','Not connected')+'</div>'+
+      '<div><b>ChatGPT connector</b>'+chip(lsOn(LSG_DONE),'Added','Not added')+'</div>'+
+      '<div><b>Claude connector</b>'+chip(connAdded(),'Added','Not added')+'</div></div>'+
+    '<h2 class="s">1 · ChatGPT on this site</h2>'+
+    '<p class="small">Answers right here: the chat panel, <b>Explain with ChatGPT</b>, <b>Generate</b> and <b>Build my plan</b>, on your ChatGPT plan (Plus or Pro). You connect once, on a Mac or Windows computer, and then it works on every device, phone included.</p>'+
+    '<ol class="small connsteps"><li>Click <b>Continue with ChatGPT</b> below. The site shows a one-line command and a download link.</li>'+
+      '<li>On your computer (with <a href="'+NODE_URL+'" target="_blank" rel="noopener">Node.js 18 or newer</a>), download <b>chatgpt-signin.mjs</b>, open a terminal in that folder, and run the command.</li>'+
+      '<li>Sign in to ChatGPT in the browser it opens, and allow using your ChatGPT plan. The site notices within a few seconds.</li></ol>'+
+    '<p class="small">Eligible AI requests in this app will use your ChatGPT plan. You can manage usage in ChatGPT settings.</p>'+
+    '<div class="row"><button type="button" class="btn pri" data-h="cg">'+(gOn?'Manage ChatGPT':'Continue with ChatGPT')+'</button><a class="btn" href="'+CG_USAGE+'" target="_blank" rel="noopener">Manage usage</a></div>'+
+    '<h2 class="s">2 · Discuss a wrong answer in ChatGPT</h2>'+
+    '<p class="small">Every wrong answer on Practice and Mistakes has <b>Discuss in ChatGPT</b>. When you tap it:</p>'+
+    '<ul class="cgsteps"><li class="yes"><i>✓</i><div>It <b>copies</b> a short instruction such as “Use '+CONNECTOR_NAME+' to retrieve question q12 and help me understand my mistake.”</div></li>'+
+      '<li class="yes"><i>✓</i><div>It <b>opens</b> chatgpt.com in a new tab (on iPhone it may open the ChatGPT app).</div></li>'+
+      '<li class="no"><i>✗</i><div>It does <b>not fill in</b> the message: ChatGPT has no documented link for that.</div></li>'+
+      '<li class="no"><i>✗</i><div>It does <b>not send</b> anything. You paste it (on iPhone, tap the box, then Paste) and send it.</div></li></ul>'+
+    '<p class="small">Only the question’s ID is in the instruction. ChatGPT fetches the question, your answer and the explanation from your account through the connector, so you add the connector once:</p>'+
+    chatgptConnSection()+
+    '<h2 class="s">3 · Claude</h2>'+
+    '<p class="small">Study in Claude on your Claude plan. Claude can see your progress, quiz you and record your answers, rate flashcards, explain mistakes, add material and plan your weeks.</p>'+
+    claudeSection(null)+
+    '<h2 class="s">4 · Your documents and agents</h2>'+
+    '<p class="small">On <a href="#mine">My material</a>, upload your own PDFs and notes to <b>My library</b> (the original is kept too), and make <b>agents</b> with your own instructions that answer from them. Pick an agent at the bottom of the chat panel. Claude and ChatGPT can use them through the connector too, e.g. “use my Structures examiner agent”.</p>'+
+    '<h2 class="s">What is shared, and with whom</h2>'+
+    '<ul class="small"><li>Each AI reaches only <b>your</b> account, after you sign in to it with your study email and password.</li><li>Your documents, agents, answers and notes are private to you; the other person on the site can’t see them.</li><li>Links the site opens (chatgpt.com, claude.ai) never contain your questions or any sign-in token.</li><li>To disconnect: remove the connector in ChatGPT’s or Claude’s settings, or press <b>Disconnect</b> for ChatGPT here.</li></ul>';
+  view.onclick=e=>{
+    const h=e.target.closest('[data-h]'); if(h&&h.dataset.h==='cg'){openClaudeSettings();return;}
+    const a=e.target.closest('[data-a]'); if(!a)return; const k=a.dataset.a;
+    if(k==='copy')copyText(CONNECTOR_URL,'Connector URL copied',$('#connUrl'));
+    if(k==='cgconncopy')copyText(CONNECTOR_URL,'Connector URL copied',$('#cgConnUrl'));
+    if(k==='cgconndone'){try{localStorage.setItem(LSG_DONE,'1');}catch(_){}toast('Noted: ChatGPT connector added');go('aihelp',{keepScroll:true});}
+    if(k==='start'){try{localStorage.setItem(LSC_DONE,'1');}catch(_){}paintAiBtn();askClaude('What should I study today? Look at my plan week, due cards, due mistakes and weak spots, then give me a short prioritized list.');}
+  };
+  if(!g&&!initAiHelp.tried){initAiHelp.tried=true;cgLoad().then(st=>{if(st&&curPage==='aihelp')go('aihelp',{keepScroll:true});});}
+}
+
 /* ---------- settings ---------- */
 function paintAiBtn(){
   const b=$('#aiBtn'); if(!b)return;
@@ -207,7 +254,7 @@ function openClaudeSettings(after,focus){
   let pair=null, poll=null, alive=true;
   const paint=m=>{const box=$('#cgBox',m);if(box)box.innerHTML=cgSection(CG.st,pair);const sel=$('#cgModel',m);if(sel)sel.onchange=async()=>{try{const r=await cgFetch('/model',{method:'POST',body:JSON.stringify({model:sel.value})});if(r.ok){CG.st.model=sel.value;toast('Model saved');}}catch(e){toast('Couldn’t save the model');}};};
   const stop=()=>{alive=false;clearInterval(poll);};
-  modalForm('<div class="lbl">Your AI</div><div class="q">Study with ChatGPT or Claude, on your own plan</div><div id="cgBox"></div>'+(CG_DISCUSS?chatgptConnSection():'')+claudeSection(after)+
+  modalForm('<div class="lbl">Your AI</div><div class="q">Study with ChatGPT or Claude, on your own plan</div><p class="small"><a href="#aihelp" data-a="close">All the steps, on the AI setup page →</a></p><div id="cgBox"></div>'+(CG_DISCUSS?chatgptConnSection():'')+claudeSection(after)+
     '<div class="row" style="margin-top:12px"><button type="button" class="btn" data-a="close">Close</button></div>',
     async(a,m,close)=>{
       if(a==='copy'){copyText(CONNECTOR_URL,'Connector URL copied',$('#connUrl',m));return;}
