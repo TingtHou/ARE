@@ -158,3 +158,27 @@ Nothing beyond the stack update:
 Limits per person: 60 documents and 15 million characters of text, about 30 big textbooks. Scanned PDFs, which are pictures of pages, have no text to read and need OCR first.
 
 **To turn it on**, update the stack once more with the new `aws/are-accounts.yaml`, the same way as before. It adds the `/library` routes and lets the connector read your documents. It all stays in the same free DynamoDB table.
+
+# The connector in ChatGPT ("Discuss in ChatGPT")
+
+The same connector works in ChatGPT. Every wrong answer on Practice and Mistakes has a **Discuss in ChatGPT** button.
+
+**What the button does, step by step:**
+1. **Copies** a short instruction, for example: "Use ARE Study System to retrieve question q12 and help me understand my mistake."
+2. **Opens** https://chatgpt.com/ in a new tab. On an iPhone with the ChatGPT app, it may open the app.
+3. **Doesn't fill in the message.** ChatGPT has no documented link that types a message for you. A `?q=` link works unofficially, but it's undocumented and reportedly sends the message straight away, so it isn't used.
+4. **Doesn't send anything.** You paste the instruction and send it yourself.
+
+The link carries only the bare chatgpt.com address. No question text and no tokens go in it. ChatGPT then calls the connector's `get_question` tool, signed in as you, and gets:
+- the question, options and any images
+- your own last answer and mistake history
+- the correct answer and the explanation
+
+Each person reaches only their own answers and their own questions.
+
+**Add the connector to ChatGPT once (each person):**
+1. In ChatGPT, open **Settings** → **Apps** (or **Apps & Connectors**) → **Advanced settings**, and turn on **Developer mode**. It's in beta, and which plans have it can change. Some reports say Plus and Pro get read-only connectors, which is enough for `get_question`.
+2. Choose **Create** (or **Add custom connector**). **Name:** `ARE Study System`. **URL:** `https://igmnvwc8n8.execute-api.us-east-1.amazonaws.com/mcp`. **Authentication:** OAuth.
+3. Sign in with your study account when asked.
+
+**Server side:** the sign-in now accepts ChatGPT's return addresses (`https://chatgpt.com/connector_platform_oauth_redirect`, and `https://chatgpt.com/connector/oauth/…` for older setups). It also advertises and returns `iss` (RFC 9207), and ties each token to the connector's own address, the `resource` ChatGPT asks for. Update the stack to deploy these changes.

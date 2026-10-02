@@ -395,6 +395,8 @@ select.sel{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px so
 .dvrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--rule)}.dvrow .obj{flex:0 0 auto;min-width:64px}.dvrow .dvt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.dvrow .mb{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .dvrow.weak{border-left:3px solid var(--flag);background:var(--flag-soft)}.dvrow.now{border-left:3px solid var(--accent);background:var(--accent-soft)}
 @media (max-width:600px){.dvrow{flex-wrap:wrap}.dvrow .mb{width:100%;justify-content:flex-start}}
+.cgsteps{list-style:none;padding:0;margin:10px 0;font:14px/1.45 var(--sans)}.cgsteps li{display:flex;gap:8px;margin:0 0 6px}.cgsteps li i{flex:0 0 18px;font-style:normal;font-weight:700;text-align:center}.cgsteps li div{flex:1;min-width:0}.cgsteps li.yes i{color:var(--ok)}.cgsteps li.no i{color:var(--ink-3)}
+.cgmsg{width:100%;box-sizing:border-box;font:14px var(--sans);padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--paper);color:var(--ink);resize:none}
 .libdrop{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1.5px dashed var(--rule);border-radius:10px;padding:14px;margin:8px 0 12px}.libdrop.on{border-color:var(--accent);background:var(--accent-soft)}
 .agdocs{margin:2px 0 4px 22px;max-height:160px;overflow:auto}
 .chagent{max-width:46%;font:12px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--ink)}
@@ -2043,7 +2045,7 @@ function itemEl(it,idx,mode){
     $$('.opt',el).forEach(b=>{const i=+b.dataset.i;b.disabled=true;b.classList.remove('on');if(it.c.includes(i))b.classList.add('right');else if(s.includes(i))b.classList.add('wrong');});
     const ok=itemOk(it,s), exp=$('.exp',el);exp.hidden=false;
     exp.innerHTML='<strong style="color:'+(ok?'var(--ok)':'var(--flag)')+'">'+(ok?'Correct.':'Not quite.')+'</strong> '+it.e+(info?'<div class="learned '+info.cls+'">'+info.msg+'</div>':'');
-    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'');
+    foot.innerHTML='<button type="button" class="lnk" data-act="reread">Reread '+esc(it.o)+'</button>'+(mode.live?'<button type="button" class="lnk" data-act="retry">Try again</button>':'')+(!ok&&AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp">Explain with '+AI_NAME()+'</button>':'')+(!ok&&CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc">Discuss in ChatGPT</button>':'');
   };
   if(mode.live&&S.ans[idx]&&!mode.fresh){showResult(S.ans[idx].sel);}
   else if(mode.review){showResult(mode.sel||[]);}
@@ -2055,6 +2057,7 @@ function itemEl(it,idx,mode){
     const a=e.target.closest('[data-act]');
     if(a){
       if(a.dataset.act==='reread')gotoObj(it.o);
+      if(a.dataset.act==='cgdisc'){discussInChatGPT(it.id);return;}
       if(a.dataset.act==='aiexp'){aiExplainItem(it,(S.ans[idx]&&S.ans[idx].sel)||mode.sel||[],el,S.mist[idx]&&!S.mist[idx].fixed?idx:null);return;}
       if(a.dataset.act==='edit'){itemEditor(it,()=>{const nw=ITEM(it.id);if(nw)el.replaceWith(itemEl(nw,nw.id,mode));else el.remove();});return;}
       if(a.dataset.act==='retry'){el.replaceWith(itemEl(it,idx,Object.assign({},mode,{fresh:true})));}
@@ -2183,6 +2186,7 @@ function initMistakes(){
     if(b.dataset.act==='retry'){S.qdiv='';S.qmode='all';go('practice',{obj:null,focusFresh:i});}
     if(b.dataset.act==='reread')gotoObj(ITEM(i).o);
     if(b.dataset.act==='cards')go('cards',{obj:ITEM(i).o});
+    if(b.dataset.act==='cgdisc'){discussInChatGPT(i);return;}
     if(b.dataset.act==='aiexp')aiExplainItem(ITEM(i),S.mist[i].sel||[],b.closest('.mk'),i);};
   let nt=null;
   list.oninput=e=>{const ta=e.target.closest('textarea[data-i]');if(!ta)return;S.mist[ta.dataset.i].note=ta.value.slice(0,1000);clearTimeout(nt);nt=setTimeout(save,700);};
@@ -2201,7 +2205,7 @@ function mkEl(i,cls){
     '<dl class="pick"><dt>You picked</dt><dd class="no">'+opt(m.sel||[])+'</dd><dt>Answer</dt><dd class="yes">'+opt(it.c)+'</dd></dl>'+
     '<details><summary>Why — the trap</summary><p class="small" style="margin:0">'+it.e+'</p></details>'+
     '<textarea data-i="'+i+'" id="note-'+i+'" placeholder="Your note: why did you pick it, and what will you check next time?" aria-label="Your note">'+esc(m.note||'')+'</textarea>'+
-    '<div class="foot">'+(m.fixed?'':'<button type="button" class="lnk" data-act="retry" data-i="'+i+'">Answer it again</button>')+(AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp" data-i="'+i+'">Explain with '+AI_NAME()+'</button>':'')+'<button type="button" class="lnk" data-act="reread" data-i="'+i+'">Reread '+esc(it.o)+'</button>'+(CARDS.some(c=>c.o===it.o)?'<button type="button" class="lnk" data-act="cards" data-i="'+i+'">Drill '+esc(it.o)+' cards</button>':'')+'</div></div>';
+    '<div class="foot">'+(m.fixed?'':'<button type="button" class="lnk" data-act="retry" data-i="'+i+'">Answer it again</button>')+(AI_POSSIBLE?'<button type="button" class="lnk" data-act="aiexp" data-i="'+i+'">Explain with '+AI_NAME()+'</button>':'')+(CG_DISCUSS?'<button type="button" class="lnk" data-act="cgdisc" data-i="'+i+'">Discuss in ChatGPT</button>':'')+'<button type="button" class="lnk" data-act="reread" data-i="'+i+'">Reread '+esc(it.o)+'</button>'+(CARDS.some(c=>c.o===it.o)?'<button type="button" class="lnk" data-act="cards" data-i="'+i+'">Drill '+esc(it.o)+' cards</button>':'')+'</div></div>';
 }
 
 /* ================= PLAN ================= */
@@ -2389,6 +2393,50 @@ function askClaude(prompt){
   toast('Opened Claude in a new tab · the prompt is also copied');
 }
 
+/* ---------- "Discuss in ChatGPT": a wrong answer, talked through in ChatGPT with the same connector ----------
+   ChatGPT has no documented link that fills in a message, so the page only copies a short instruction and
+   opens chatgpt.com; the student pastes it and sends it. Only the question's ID leaves the page: ChatGPT fetches
+   the question and the student's own answer through the connector (get_question), signed in as them. */
+const CG_DISCUSS=AI_MODE!=='plan'&&AUTH_ON&&!!CONNECTOR_URL;
+const CONNECTOR_NAME='ARE Study System', CHATGPT_HOME='https://chatgpt.com/';
+const LSG_DONE='are_chatgpt_connector_added';
+function openNewTab(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();}
+function discussInChatGPT(id){
+  const msg='Use '+CONNECTOR_NAME+' to retrieve question '+id+' and help me understand my mistake.';
+  // both inside the click, so Safari on iPhone allows them: copy first, then open ChatGPT
+  let copy=Promise.resolve(false);
+  try{if(navigator.clipboard&&navigator.clipboard.writeText)copy=navigator.clipboard.writeText(msg).then(()=>true,()=>false);}catch(e){}
+  openNewTab(CHATGPT_HOME);
+  const first=(()=>{try{return !localStorage.getItem(LSG_DONE);}catch(e){return true;}})();
+  copy.then(copied=>{
+    const st=(ok,txt)=>'<li class="'+(ok?'yes':'no')+'"><i aria-hidden="true">'+(ok?'✓':'✗')+'</i><div>'+txt+'</div></li>';
+    modalForm('<div class="lbl">ChatGPT</div><div class="q">Discuss question '+esc(id)+' in ChatGPT</div>'+
+      '<ul class="cgsteps">'+st(copied,copied?'<b>Copied</b> the instruction below.':'<b>Not copied</b>: your browser didn’t allow it. Select the text below and copy it.')+
+        st(true,'<b>Opened ChatGPT</b> in a new tab. If it didn’t open, use <b>Open ChatGPT</b> below.')+
+        st(false,'<b>Not filled in</b>: ChatGPT has no documented link that types a message for you.')+
+        st(false,'<b>Not sent</b>: nothing goes to ChatGPT until you send it.')+'</ul>'+
+      '<textarea class="cgmsg" id="cgMsg" rows="2" readonly>'+esc(msg)+'</textarea>'+
+      '<p class="small"><b>In ChatGPT:</b> paste it into the message box (on iPhone, tap the box, then <b>Paste</b>) and send it. ChatGPT fetches the question, your answer and the explanation from your study account; the link itself carries none of it.</p>'+
+      (first?'<p class="small"><b>First time?</b> Add the connector in ChatGPT once, or ChatGPT won’t find the question. <button type="button" class="lnk" data-a="setup">Show me how</button></p>':'')+
+      '<div class="row" style="margin-top:10px"><a class="btn pri" href="'+CHATGPT_HOME+'" target="_blank" rel="noopener noreferrer">Open ChatGPT</a><button type="button" class="btn" data-a="copy">Copy again</button><button type="button" class="btn" data-a="close">Close</button></div>',
+      (a,m,close)=>{
+        if(a==='copy')copyText(msg,'Instruction copied',$('#cgMsg',m));
+        if(a==='setup'){close();openClaudeSettings(null,'chatgpt');}
+        if(a==='close')close();
+      });
+    const ta=$('#cgMsg'); if(ta&&!copied){ta.focus();ta.select();}
+  });
+}
+function chatgptConnSection(){
+  const done=(()=>{try{return !!localStorage.getItem(LSG_DONE);}catch(e){return false;}})();
+  return '<div class="aisec" id="cgConnSec"><div class="aisech"><b>ChatGPT connector</b><span class="small">discuss your mistakes in ChatGPT</span></div>'+
+    '<p class="small">Add this site to ChatGPT once, and <b>Discuss in ChatGPT</b> on any wrong answer lets ChatGPT fetch that question, your answer and the explanation from your account. ChatGPT’s custom connectors need <b>Developer mode</b>, which is in beta and not on every plan.</p>'+
+    '<ol class="small connsteps"><li>In ChatGPT, open <b>Settings</b> → <b>Apps</b> (or <b>Apps &amp; Connectors</b>) → <b>Advanced settings</b>, and turn on <b>Developer mode</b>.</li>'+
+    '<li>Choose <b>Create</b> (or <b>Add custom connector</b>). Name it <b>'+CONNECTOR_NAME+'</b>, paste this URL, and choose <b>OAuth</b>:<div class="connurl"><input id="cgConnUrl" readonly value="'+esc(CONNECTOR_URL)+'"><button type="button" class="btn sm" data-a="cgconncopy">Copy</button></div></li>'+
+    '<li>Sign in with your study account when asked: the same email and password as here.</li></ol>'+
+    '<div class="row"><button type="button" class="btn" data-a="cgconndone">'+(done?'Added ✓':'I’ve added it')+'</button></div></div>';
+}
+
 /* ---------- settings ---------- */
 function paintAiBtn(){
   const b=$('#aiBtn'); if(!b)return;
@@ -2437,7 +2485,7 @@ function cgWelcome(){
   modalForm('<div class="lbl">ChatGPT</div><div class="q">You’re using your ChatGPT plan</div><p class="small">Eligible AI requests in this app will use your ChatGPT plan. You can manage usage in ChatGPT settings.</p>'+
     '<div class="row" style="margin-top:12px"><button type="button" class="btn pri" data-a="ok">Got it</button><a class="btn" href="'+CG_USAGE+'" target="_blank" rel="noopener">Manage usage</a></div>',(a,m,close)=>close());
 }
-function openClaudeSettings(after){
+function openClaudeSettings(after,focus){
   if(AI_MODE==='plan'){
     modalForm('<div class="lbl">Your Claude</div><div class="q">Claude on your claude.ai plan</div>'+
       (SAMPLE?'<p class="small">Here on claude.ai, the Claude features use <b>your own claude.ai plan</b>. No API key is needed, and nothing is billed separately. The first time you use one, claude.ai asks you to allow this page.</p>'+
@@ -2450,10 +2498,12 @@ function openClaudeSettings(after){
   let pair=null, poll=null, alive=true;
   const paint=m=>{const box=$('#cgBox',m);if(box)box.innerHTML=cgSection(CG.st,pair);const sel=$('#cgModel',m);if(sel)sel.onchange=async()=>{try{const r=await cgFetch('/model',{method:'POST',body:JSON.stringify({model:sel.value})});if(r.ok){CG.st.model=sel.value;toast('Model saved');}}catch(e){toast('Couldn’t save the model');}};};
   const stop=()=>{alive=false;clearInterval(poll);};
-  modalForm('<div class="lbl">Your AI</div><div class="q">Study with ChatGPT or Claude, on your own plan</div><div id="cgBox"></div>'+claudeSection(after)+
+  modalForm('<div class="lbl">Your AI</div><div class="q">Study with ChatGPT or Claude, on your own plan</div><div id="cgBox"></div>'+(CG_DISCUSS?chatgptConnSection():'')+claudeSection(after)+
     '<div class="row" style="margin-top:12px"><button type="button" class="btn" data-a="close">Close</button></div>',
     async(a,m,close)=>{
       if(a==='copy'){copyText(CONNECTOR_URL,'Connector URL copied',$('#connUrl',m));return;}
+      if(a==='cgconncopy'){copyText(CONNECTOR_URL,'Connector URL copied',$('#cgConnUrl',m));return;}
+      if(a==='cgconndone'){try{localStorage.setItem(LSG_DONE,'1');}catch(e){}const b=m.querySelector('[data-a="cgconndone"]');if(b)b.textContent='Added ✓';toast('Noted: ChatGPT connector added');return;}
       if(a==='cgcopy'){copyText($('#cgCmd',m).value,'Command copied',$('#cgCmd',m));return;}
       if(a==='cgretry'){await cgLoad(true);paint(m);return;}
       if(a==='cgcancel'){pair=null;clearInterval(poll);paint(m);return;}
@@ -2474,6 +2524,7 @@ function openClaudeSettings(after){
       if(a==='close'){stop();close();}
     });
   paint($('#modal'));
+  if(focus==='chatgpt'){const s=$('#cgConnSec');if(s)setTimeout(()=>s.scrollIntoView({block:'start'}),30);}
   if(AUTH_ON)cgLoad(true).then(()=>{if(alive&&!$('#modal').hidden&&!pair)paint($('#modal'));});
 }
 function needAi(then){if(aiReady())return true;openClaudeSettings(then);return false;}

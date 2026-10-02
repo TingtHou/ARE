@@ -15,7 +15,9 @@ const TABLE = process.env.TABLE, CLIENT_ID = process.env.CLIENT_ID, POOL_ID = pr
 const SITE = String(process.env.SITE_URL || '').replace(/\/+$/, '');
 const TZ = process.env.STUDY_TZ || 'America/Chicago';
 const AT_LIFE = 3600, RT_LIFE = 90 * 86400, CODE_LIFE = 300;
-const REDIRECTS = [/^https:\/\/claude\.ai\/api\/mcp\/auth_callback$/, /^https:\/\/claude\.com\/api\/mcp\/auth_callback$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/callback$/];
+const REDIRECTS = [/^https:\/\/claude\.ai\/api\/mcp\/auth_callback$/, /^https:\/\/claude\.com\/api\/mcp\/auth_callback$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/callback$/,
+  /^https:\/\/chatgpt\.com\/connector_platform_oauth_redirect$/, /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]{1,128}$/];   // Claude, Claude Code, ChatGPT
+const appOf = u => /^https:\/\/chatgpt\.com\//.test(String(u || '')) ? 'ChatGPT' : 'Claude';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 /* ---------- storage and sign-in (replaced by fakes in tests) ---------- */
@@ -422,6 +424,19 @@ const TOOLS = [
       const sel = [...new Set((i.choices || []).map(x => String(x).trim().toUpperCase().charCodeAt(0) - 65).filter(k => k >= 0 && k < it.opts.length))];
       if (!sel.length) throw new Error('choices must be option letters like ["B"].');
       const note = record(X, it.id, sel); return { correct: itemOk(it, sel), correct_answer: it.c.map(L), note }; } },
+  { name: 'get_question', title: 'Get a question by ID', annotations: RO, description: 'One practice question by its question_id (e.g. "q12", or "u…" for the student’s own): the question, lettered options, any images, the student’s own last answer and mistake history, the correct answer and the explanation. Use it when the student asks to discuss a question they got wrong: start from their reasoning, explain the rule that decides it and why their choice was tempting, then offer a similar question.',
+    inputSchema: OBJ({ question_id: { type: 'string', description: 'e.g. "q12"' } }, ['question_id']),
+    run: (X, i) => { const id = String(i.question_id || '').trim(), it = X.item(id);
+      if (!it) throw new Error('No question with question_id "' + id + '" for this student.');
+      const imgs = html => [...String(html || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*"([^"]+)"[^>]*>/gi)].map(m => { try { return new URL(m[1], SITE + '/').href; } catch (e) { return null; } }).filter(Boolean);
+      const a = X.S.ans[id], m = X.S.mist[id];
+      return { question_id: id, objective: it.o, objective_title: X.objTitle(it.o), type: it.t === 'cata' ? 'check all that apply' : 'multiple choice', own_question: !!it.mine,
+        question: strip(it.s), options: it.opts.map((x, k) => L(k) + '. ' + strip(x)), images: imgs(it.s).concat(...it.opts.map(imgs), imgs(it.e)),
+        my_answer: a ? { choices: a.sel.map(L), correct: a.ok, answered: dsOf(a.at) } : null,
+        mistake_log: m ? { times_missed: m.n, choices_last_time: (m.sel || []).map(L), fixed: !!m.fixed, next_retry: m.fixed ? null : whenStr(m.due), my_note: m.note || '' } : null,
+        correct_answer: it.c.map(L), explanation: strip(it.e) }; } },
+  { name: 'get_profile', title: 'Who is signed in', annotations: RO, meta: { 'openai/profile': true }, description: 'The signed-in study account: a stable opaque id.',
+    inputSchema: OBJ(), run: X => ({ id: 'are_' + crypto.createHash('sha256').update(X.sub).digest('hex').slice(0, 24) }) },
   { name: 'mistakes', title: 'List mistakes', annotations: RO, description: 'The student’s mistake log: questions they got wrong, what they chose, the right answer, how often they missed it, when it is due again and their own note. Use to explain mistakes or re-ask them.',
     inputSchema: OBJ({ which: { type: 'string', enum: ['due', 'open', 'fixed'], description: 'due = due now (default), open = not fixed yet, fixed = learned' }, count: { type: 'integer', minimum: 1, maximum: 20 } }),
     run: (X, i) => { const w = i.which || 'due', due = mistDue(X);
@@ -502,7 +517,7 @@ async function callTool(sub, name, args) {
       if (body.length > 350000) return { content: [{ type: 'text', text: 'Error: the student’s saved data is too large to save. They should remove unused items on My material.' }], isError: true };
       if (!(await D().putProgress(sub, body, row ? row.updatedAt : null))) continue;   // saved elsewhere meanwhile: run again on the newer copy
     }
-    return { content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out) }] };
+    return Object.assign({ content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out) }] }, out && typeof out === 'object' && !Array.isArray(out) ? { structuredContent: out } : {});
   }
   return { content: [{ type: 'text', text: 'Error: the progress changed several times at once. Try again.' }], isError: true };
 }
@@ -532,24 +547,25 @@ function page(title, inner) {
 function signInPage(q, err, email) {
   const host = (() => { try { return new URL(q.redirect_uri).host; } catch (e) { return '?'; } })();
   const hidden = ['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'scope', 'resource'].map(k => q[k] != null ? '<input type="hidden" name="' + k + '" value="' + esc(q[k]) + '">' : '').join('');
-  return page('Connect Claude · ARE Study System', '<h1>Connect Claude to your study account</h1><p>Sign in with your ARE Study System account. Claude will be able to see your progress, quiz you, record answers and ratings, and add material to your own collection. You’ll go back to <b>' + esc(host) + '</b>.</p>' +
+  const app = appOf(q.redirect_uri);
+  return page('Connect ' + app + ' · ARE Study System', '<h1>Connect ' + app + ' to your study account</h1><p>Sign in with your ARE Study System account. ' + app + ' will be able to see your progress, quiz you, record answers and ratings, and add material to your own collection. You’ll go back to <b>' + esc(host) + '</b>.</p>' +
     (err ? '<div class="err">' + esc(err) + '</div>' : '') +
     '<form method="post" action="/oauth/authorize">' + hidden + '<label for="e">Email</label><input id="e" name="email" type="email" autocomplete="username" required value="' + esc(email || '') + '"><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>' +
     '<div class="row"><button type="submit" name="decision" value="deny" formnovalidate>Cancel</button><button type="submit" name="decision" value="allow" class="pri">Sign in and connect</button></div></form>' +
-    '<p class="small">No account yet? Create one on the study website first. You can disconnect any time in Claude’s connector settings.</p>');
+    '<p class="small">No account yet? Create one on the study website first. You can disconnect any time in ' + app + '’s connector settings.</p>');
 }
-const errPage = msg => page('Cannot connect', '<h1>This link can’t be used</h1><p>' + esc(msg) + '</p><p>Start again from Claude: Settings, Connectors.</p>');
+const errPage = msg => page('Cannot connect', '<h1>This link can’t be used</h1><p>' + esc(msg) + '</p><p>Start again from your Claude or ChatGPT connector settings.</p>');
 function checkAuthz(q) {
   if (q.response_type !== 'code') return 'This sign-in link is missing its request type.';
   if (!q.client_id) return 'This sign-in link is missing its client.';
-  if (!okRedirect(q.redirect_uri)) return 'This sign-in link doesn’t lead back to Claude.';
+  if (!okRedirect(q.redirect_uri)) return 'This sign-in link doesn’t lead back to Claude or ChatGPT.';
   if (!q.code_challenge || q.code_challenge_method !== 'S256') return 'This sign-in link is missing its security check (PKCE).';
   return null;
 }
-async function issue(sub, cid) {
+async function issue(sub, cid, res) {
   const at = rnd(), rt = rnd();
-  await D().put('oauth#at#' + sha(at), JSON.stringify({ sub, cid, exp: nowS() + AT_LIFE }), nowS() + AT_LIFE + 60);
-  await D().put('oauth#rt#' + sha(rt), JSON.stringify({ sub, cid, exp: nowS() + RT_LIFE }), nowS() + RT_LIFE + 60);
+  await D().put('oauth#at#' + sha(at), JSON.stringify({ sub, cid, res, exp: nowS() + AT_LIFE }), nowS() + AT_LIFE + 60);
+  await D().put('oauth#rt#' + sha(rt), JSON.stringify({ sub, cid, res, exp: nowS() + RT_LIFE }), nowS() + RT_LIFE + 60);
   return jres(200, { access_token: at, token_type: 'Bearer', expires_in: AT_LIFE, refresh_token: rt, scope: 'study' }, { pragma: 'no-cache' });
 }
 const tokErr = (code, error, desc) => jres(code, { error, error_description: desc });
@@ -560,7 +576,7 @@ async function mcp(ev, base) {
   if (!m) return unauth(false);
   const row = await D().get('oauth#at#' + sha(m[1]));
   let tok = null; try { tok = row && JSON.parse(row.data); } catch (e) { }
-  if (!tok || tok.exp < nowS()) return unauth(true);
+  if (!tok || tok.exp < nowS() || (tok.res && tok.res !== base + '/mcp')) return unauth(true);
   const msg = bodyOf(Object.assign({}, ev, { headers: { 'content-type': 'application/json' } }));
   if (!msg) return jres(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
   const list = Array.isArray(msg) ? msg : [msg], out = [];
@@ -571,7 +587,7 @@ async function mcp(ev, base) {
     try {
       if (r.method === 'initialize') reply({ result: { protocolVersion: VERSIONS.includes(p.protocolVersion) ? p.protocolVersion : VERSIONS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'are-study-system', title: 'ARE Study System', version: '1.0.0' }, instructions: INSTRUCTIONS } });
       else if (r.method === 'ping') reply({ result: {} });
-      else if (r.method === 'tools/list') reply({ result: { tools: TOOLS.map(t => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: Object.assign({ title: t.title }, t.annotations) })) } });
+      else if (r.method === 'tools/list') reply({ result: { tools: TOOLS.map(t => Object.assign({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: Object.assign({ title: t.title }, t.annotations), securitySchemes: [{ type: 'oauth2', scopes: ['study'] }] }, t.meta ? { _meta: t.meta } : {})) } });
       else if (r.method === 'tools/call') reply({ result: await callTool(tok.sub, p.name, p.arguments) });
       else reply({ error: { code: -32601, message: 'Method not found: ' + r.method } });
     } catch (e) { console.error(e); reply({ error: { code: -32603, message: 'Internal error: ' + String(e && e.message || e).slice(0, 200) } }); }
@@ -590,7 +606,7 @@ exports.handler = async (ev) => {
       return jres(200, { resource: base + '/mcp', authorization_servers: [base], scopes_supported: ['study'], bearer_methods_supported: ['header'], resource_name: 'ARE Study System' });
     if (path.startsWith('/.well-known/oauth-authorization-server') || path.startsWith('/.well-known/openid-configuration'))
       return jres(200, { issuer: base, authorization_endpoint: base + '/oauth/authorize', token_endpoint: base + '/oauth/token', registration_endpoint: base + '/oauth/register',
-        response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'],
+        response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'], authorization_response_iss_parameter_supported: true,
         token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'], scopes_supported: ['study'] });
     if (path === '/mcp') {
       if (method === 'POST') return await mcp(ev, base);
@@ -598,22 +614,25 @@ exports.handler = async (ev) => {
     }
     if (path === '/oauth/register' && method === 'POST') {
       const b = bodyOf(ev) || {}, uris = Array.isArray(b.redirect_uris) ? b.redirect_uris : [];
-      if (!uris.length || !uris.every(okRedirect)) return jres(400, { error: 'invalid_redirect_uri', error_description: 'Only Claude’s own sign-in return addresses are accepted.' });
+      if (!uris.length || !uris.every(okRedirect)) return jres(400, { error: 'invalid_redirect_uri', error_description: 'Only Claude’s and ChatGPT’s own sign-in return addresses are accepted.' });
       const auth = ['client_secret_post', 'client_secret_basic'].includes(b.token_endpoint_auth_method) ? b.token_endpoint_auth_method : 'none';
-      const out = { client_id: 'are-' + crypto.randomBytes(12).toString('hex'), client_id_issued_at: nowS(), client_name: String(b.client_name || 'Claude').slice(0, 100), redirect_uris: uris,
+      const out = { client_id: 'are-' + crypto.randomBytes(12).toString('hex'), client_id_issued_at: nowS(), client_name: String(b.client_name || appOf(uris[0])).slice(0, 100), redirect_uris: uris,
         grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: auth, scope: 'study' };
       if (auth !== 'none') { out.client_secret = rnd(); out.client_secret_expires_at = 0; }
       return jres(201, out);
     }
+    const RES = base + '/mcp';
     if (path === '/oauth/authorize' && method === 'GET') {
       const bad = checkAuthz(q); if (bad) return errPage(bad);
+      if (q.resource && q.resource !== RES) return errPage('This sign-in is for a different service (' + q.resource + ').');
       return signInPage(q);
     }
     if (path === '/oauth/authorize' && method === 'POST') {
       const f = bodyOf(ev) || {}; f.response_type = 'code';
       const bad = checkAuthz(f); if (bad) return errPage(bad);
+      if (f.resource && f.resource !== RES) return errPage('This sign-in is for a different service.');
       const back = x => res(302, null, { location: withQuery(f.redirect_uri, Object.assign(x, f.state != null ? { state: f.state } : {})) });
-      if (f.decision === 'deny') return back({ error: 'access_denied' });
+      if (f.decision === 'deny') return back({ error: 'access_denied', iss: base });
       let who;
       try { who = await D().login(String(f.email || '').trim(), String(f.password || '')); }
       catch (e) {
@@ -623,7 +642,7 @@ exports.handler = async (ev) => {
         return signInPage(f, msg, f.email);
       }
       const code = rnd();
-      await D().put('oauth#code#' + sha(code), JSON.stringify({ sub: who.sub, cid: f.client_id, ru: f.redirect_uri, cc: f.code_challenge, exp: nowS() + CODE_LIFE }), nowS() + CODE_LIFE + 60);
+      await D().put('oauth#code#' + sha(code), JSON.stringify({ sub: who.sub, cid: f.client_id, ru: f.redirect_uri, cc: f.code_challenge, res: f.resource || RES, exp: nowS() + CODE_LIFE }), nowS() + CODE_LIFE + 60);
       return back({ code, iss: base });
     }
     if (path === '/oauth/token' && method === 'POST') {
@@ -631,20 +650,21 @@ exports.handler = async (ev) => {
       let cid = f.client_id;
       const basic = String((ev.headers || {}).authorization || '').match(/^Basic\s+(\S+)$/i);
       if (basic) cid = decodeURIComponent(Buffer.from(basic[1], 'base64').toString('utf8').split(':')[0]);
+      if (f.resource && f.resource !== RES) return tokErr(400, 'invalid_target', 'Tokens here are only for ' + RES + '.');
       if (f.grant_type === 'authorization_code') {
         const row = f.code && await D().take('oauth#code#' + sha(String(f.code)));
         const c = row && JSON.parse(row.data);
         if (!c || c.exp < nowS()) return tokErr(400, 'invalid_grant', 'The code is unknown, used or expired.');
         if (c.ru !== f.redirect_uri || (cid && c.cid !== cid)) return tokErr(400, 'invalid_grant', 'The code was issued to a different client.');
         if (!f.code_verifier || sha(String(f.code_verifier)) !== c.cc) return tokErr(400, 'invalid_grant', 'The PKCE check failed.');
-        return await issue(c.sub, c.cid);
+        return await issue(c.sub, c.cid, c.res);
       }
       if (f.grant_type === 'refresh_token') {
         const row = f.refresh_token && await D().take('oauth#rt#' + sha(String(f.refresh_token)));
         const c = row && JSON.parse(row.data);
         if (!c || c.exp < nowS() || (cid && c.cid !== cid)) return tokErr(400, 'invalid_grant', 'The refresh token is unknown, used or expired.');
         if (!(await D().userOk(c.sub))) return tokErr(400, 'invalid_grant', 'This account is disabled.');
-        return await issue(c.sub, c.cid);
+        return await issue(c.sub, c.cid, c.res);
       }
       return tokErr(400, 'unsupported_grant_type', 'Use authorization_code or refresh_token.');
     }
