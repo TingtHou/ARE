@@ -1426,7 +1426,7 @@ function itemEl(it,idx,mode){
 /* record an answer and learn from it; returns {cls,msg} describing what the system did */
 function record(idx,sel,o){
   const it=ITEM(idx), ok=itemOk(it,sel), now=Date.now();
-  S.ans[idx]={sel:sel.slice(),ok:ok,at:now};
+  const pv=S.ans[idx]; S.ans[idx]={sel:sel.slice(),ok:ok,at:now,rs:ok?(pv&&pv.ok?(pv.rs||1):0)+1:0};   // rs: right this many times in a row
   let out=null;
   const m=S.mist[idx];
   if(o&&o.practice){logAct();save();return null;}   // a similar question in a learning loop: scored, not logged as a mistake

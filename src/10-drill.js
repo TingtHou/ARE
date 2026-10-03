@@ -26,21 +26,43 @@ function objMiss(d){
   const o={}; drillPool(d).forEach(q=>{const a=S.ans[q.id];if(!a)return;const x=o[q.o]=o[q.o]||{n:0,miss:0};x.n++;if(!a.ok)x.miss++;});
   Object.values(o).forEach(x=>{x.rate=x.n?x.miss/x.n:0;}); return o;
 }
-function drillWeight(q,om,now){
-  const a=S.ans[q.id], m=S.mist[q.id]; let w=1;
+/* Same concept: a question and the similar ones written from it (learning loop, src link), or questions whose wording
+   overlaps a lot (counted double inside one objective). Used to keep them apart and to ease off concepts you know. */
+const DRILL_SPACE=6;   // look this many questions back for the same concept
+const SIM_STOP=new Set('which what that this with from have will would should their there they been were when where about into than then them these those your following under each other more most only also does used uses using best first after before such being because based given shown below above according statement statements correct apply check three four'.split(' '));
+const SIM_WORDS=new Map();
+function simWords(q){let w=SIM_WORDS.get(q.id);if(!w){w=new Set((strip(String(q.s).replace(/<details[\s\S]*?<\/details>/g,' ')).toLowerCase().match(/[a-z][a-z0-9-]{3,}/g)||[]).filter(x=>!SIM_STOP.has(x)));SIM_WORDS.set(q.id,w);}return w;}
+function simRoot(q){const C=(S.custom&&S.custom.items)||{};let id=q.id,k=0;while(C[id]&&C[id].src&&k++<5)id=C[id].src;return id;}
+function sameConcept(a,b){
+  if(a.id===b.id||simRoot(a)===simRoot(b))return true;
+  const A=simWords(a),B=simWords(b); if(!A.size||!B.size)return false;
+  let n=0;A.forEach(x=>{if(B.has(x))n++;}); const j=n/(A.size+B.size-n);
+  return (a.o===b.o?2*j:j)>=0.35;
+}
+const rightRun=a=>a&&a.ok?(a.rs||1):0;   // answers saved before the count existed count as once
+function drillWeight(q,om,now,ctx){
+  const a=S.ans[q.id], m=S.mist[q.id], due=m&&!m.fixed&&m.due<=now; let w=1;
   if(!a)w*=2; else if(!a.ok)w*=5;
-  if(m&&!m.fixed){w+=4;if(m.due<=now)w+=3;}
+  if(m&&!m.fixed){w+=4;if(due)w+=3;}
   if(a&&a.ok&&now-a.at<DAY)w*=0.3;
   if(DR&&DR.rightIds.has(q.id))w*=0.3;
   const x=om[q.o]; if(x)w*=1+2*x.rate;
+  // right twice in a row: this question, and others on the same concept, come up much less (unless a mistake review is due)
+  if(!due){const r=rightRun(a); if(r>=2)w*=r>=3?0.08:0.15; else if(ctx.known.some(k=>k.id!==q.id&&sameConcept(q,k)))w*=0.5;}
+  // keep the same concept apart: nothing similar to the last few questions, and not the same objective twice running
+  ctx.recent.forEach((r,k)=>{const dist=ctx.recent.length-k; if(sameConcept(q,r))w*=dist<=3?0.02:0.2; else if(r.o===q.o&&dist<=2)w*=dist===1?0.25:0.5;});
   return w;
 }
+function drillCtx(d){
+  return {recent:DR.recent.slice(-DRILL_SPACE).map(ITEM).filter(Boolean),
+    known:drillPool(d).filter(q=>rightRun(S.ans[q.id])>=2)};
+}
 function drillPick(d){
-  const now=Date.now(), om=objMiss(d), pool=drillPool(d);
+  const now=Date.now(), om=objMiss(d), pool=drillPool(d), ctx=drillCtx(d);
   const keep=Math.min(DRILL_RECENT,Math.max(0,pool.length-3));
   const recent=new Set(DR.recent.slice(-keep));
   const cand=pool.filter(q=>!recent.has(q.id)); if(!cand.length)return pool[0]||null;
-  const ws=cand.map(q=>drillWeight(q,om,now)), tot=ws.reduce((a,b)=>a+b,0);
+  const ws=cand.map(q=>drillWeight(q,om,now,ctx)), tot=ws.reduce((a,b)=>a+b,0);
   let r=Math.random()*tot; for(let i=0;i<cand.length;i++){r-=ws[i];if(r<=0)return cand[i];}
   return cand[cand.length-1];
 }
@@ -121,7 +143,12 @@ function drillNext(){
   if(!DR)return;
   // about one in three is new, when a newly written question is waiting
   let it=null;
-  if(DR.fresh.length&&DR.sinceNew>=DRILL_NEW_EVERY-1){it=DR.fresh.shift();DR.sinceNew=0;}
+  // (new questions come three to an objective, so take one that isn't close to what was just shown; otherwise wait)
+  if(DR.fresh.length&&DR.sinceNew>=DRILL_NEW_EVERY-1){
+    const back=DR.recent.slice(-DRILL_SPACE).map(ITEM).filter(Boolean);
+    const k=DR.fresh.findIndex(q=>!back.some((r,j)=>sameConcept(q,r)||(r.o===q.o&&back.length-j<=2)));
+    if(k>=0){it=DR.fresh.splice(k,1)[0];DR.sinceNew=0;}
+  }
   if(!it){it=drillPick(DR.d);DR.sinceNew++;}
   if(!it){$('#drQ').innerHTML='<div class="panel empty">There are no '+DR.d+' questions yet. Add some on My material, or connect ChatGPT to have them written.</div>';return;}
   DR.recent.push(it.id); if(DR.recent.length>40)DR.recent.shift();

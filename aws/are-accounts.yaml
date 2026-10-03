@@ -671,7 +671,7 @@ Resources:
           }
           function record(X, id, sel) {
             const S = X.S, it = X.item(id), ok = itemOk(it, sel), now = Date.now();
-            S.ans[id] = { sel: sel.slice(), ok, at: now };
+            const pv = S.ans[id]; S.ans[id] = { sel: sel.slice(), ok, at: now, rs: ok ? (pv && pv.ok ? (pv.rs || 1) : 0) + 1 : 0 };   // rs: right this many times in a row
             let msg = '';
             const m = S.mist[id];
             if (!ok) {
