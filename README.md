@@ -20,7 +20,7 @@ The site covers all five ARE 5.0 divisions: **PA**, **PPD**, **PDD**, **PcM** (P
 
 ## Endless practice
 
-**Endless practice** (Study → Endless practice): pick a division and answer one question after another until you click **Finish**. Questions you missed, and objectives where you miss often, come up more; nothing repeats within 8 questions. With ChatGPT on the site (or on the claude.ai link), about one in three questions is newly written for your weakest objectives in mixed formats and saved to My material, so each session adds to the pool. Answers count like Practice, misses go into the Mistakes schedule, and a summary lists what you missed with **Reread** and **Learn it**.
+**Endless practice** (Study → Endless practice): pick a division and answer one question after another. Your place is saved after every question: leave the page, close the tab or click **Stop**, and next time Endless practice continues on the same question with the same counts (on any device you sign in on). **New session** starts over; **Divisions** switches division and keeps each division's place. Questions you missed, and objectives where you miss often, come up more; nothing repeats within 8 questions. With ChatGPT on the site (or on the claude.ai link), about one in three questions is newly written for your weakest objectives in mixed formats and saved to My material, so each session adds to the pool. Answers count like Practice, misses go into the Mistakes schedule, and a summary lists what you missed with **Reread** and **Learn it**.
 
 ## Connect your AI (ChatGPT or Claude)
 
