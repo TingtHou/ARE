@@ -91,7 +91,7 @@ let CUSTERR=[];
 const newUid=()=>'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 function rebuildMaterial(){
   const C=(S&&S.custom)||{}, cc=C.cards||{}, ci=C.items||{};
-  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw','ans','tol','unit','items'];
+  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw','ans','tol','unit','items','k'];
   const pickk=(o,ks)=>{const r={};ks.forEach(k=>{if(o[k]!=null)r[k]=o[k];});return r;};
   CARDS=[]; BASE_CARDS.forEach(c=>{const o=cc[c.id];if(o&&o.hidden)return;CARDS.push(o?Object.assign({},c,pickk(o,CK),{edited:true}):c);});
   Object.keys(cc).filter(k=>!BASE_CARDS.some(b=>b.id===k)&&!cc[k].hidden&&cc[k].q&&cc[k].a).forEach(k=>CARDS.push(Object.assign({o:'—',d:'My cards'},pickk(cc[k],CK),{id:k,mine:true})));
@@ -983,6 +983,7 @@ function aiPackPrompt(){
 function itemFromPack(q){
   const it={d:q.d,o:q.o,t:q.t,s:(q.title?'<p class="qtitle">'+esc(q.title)+'</p>':'')+(/\n/.test(q.s)?md2html(q.s):oneLine(q.s)),e:q.e?md2html(q.e).replace(/^<p>([\s\S]*)<\/p>$/,'$1'):'',sraw:q.s,eraw:q.e};
   if(q.title)it.title=q.title;
+  if(q.k)it.k=q.k;   // the point it tests: questions with the same k test the same thing
   if(q.t==='num')Object.assign(it,{ans:q.ans,tol:q.tol,unit:q.unit||''});
   else Object.assign(it,{opts:q.opts,c:q.c});
   if(q.t==='match')it.items=q.items;
@@ -998,6 +999,7 @@ function packOf(q){
   else if(q.t==='match')Object.assign(out,{statements:q.items.map(strip),choices:q.opts.map(strip),matches:q.c.map(k=>strip(q.opts[k]))});
   else Object.assign(out,{options:q.opts.map(strip),correct:q.c.map(k=>strip(q.opts[k]))});
   out.explanation=q.eraw!=null?q.eraw:html2md(q.e);
+  if(q.k)out.point=q.k;
   return out;
 }
 function packQuestion(q,label,problems){
@@ -1014,7 +1016,7 @@ function packQuestion(q,label,problems){
     if(k<0&&x.length>3)k=list.findIndex(o=>o.toLowerCase().startsWith(x.toLowerCase().slice(0,25))||x.toLowerCase().startsWith(o.toLowerCase().slice(0,25)));
     return k>=0&&k<list.length?k:-1;};
   let ty=String(q.type||'').toLowerCase();
-  const base={d:div,o:obj?div+' '+obj:div,title,s,e};
+  const base={d:div,o:obj?div+' '+obj:div,title,s,e}; if(str(q.point))base.k=str(q.point).slice(0,120);
   if(/num|fill|calc/.test(ty)||(q.answer!=null&&!arr(q.options||q.opts||q.choices).length&&!arr(q.statements).length)){
     const v=numIn(q.answer!=null?q.answer:q.correct); if(v==null)return bad('is a fill-in question without a numeric answer');
     const dec=(String(q.answer).replace(/[$,]/g,'').split('.')[1]||'').length, tol=numIn(q.tolerance);

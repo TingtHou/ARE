@@ -873,7 +873,7 @@ let CUSTERR=[];
 const newUid=()=>'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 function rebuildMaterial(){
   const C=(S&&S.custom)||{}, cc=C.cards||{}, ci=C.items||{};
-  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw','ans','tol','unit','items'];
+  const CK=['d','o','q','a','qraw','araw'], IK=['d','o','t','s','opts','c','e','sraw','eraw','ans','tol','unit','items','k'];
   const pickk=(o,ks)=>{const r={};ks.forEach(k=>{if(o[k]!=null)r[k]=o[k];});return r;};
   CARDS=[]; BASE_CARDS.forEach(c=>{const o=cc[c.id];if(o&&o.hidden)return;CARDS.push(o?Object.assign({},c,pickk(o,CK),{edited:true}):c);});
   Object.keys(cc).filter(k=>!BASE_CARDS.some(b=>b.id===k)&&!cc[k].hidden&&cc[k].q&&cc[k].a).forEach(k=>CARDS.push(Object.assign({o:'—',d:'My cards'},pickk(cc[k],CK),{id:k,mine:true})));
@@ -1765,6 +1765,7 @@ function aiPackPrompt(){
 function itemFromPack(q){
   const it={d:q.d,o:q.o,t:q.t,s:(q.title?'<p class="qtitle">'+esc(q.title)+'</p>':'')+(/\n/.test(q.s)?md2html(q.s):oneLine(q.s)),e:q.e?md2html(q.e).replace(/^<p>([\s\S]*)<\/p>$/,'$1'):'',sraw:q.s,eraw:q.e};
   if(q.title)it.title=q.title;
+  if(q.k)it.k=q.k;   // the point it tests: questions with the same k test the same thing
   if(q.t==='num')Object.assign(it,{ans:q.ans,tol:q.tol,unit:q.unit||''});
   else Object.assign(it,{opts:q.opts,c:q.c});
   if(q.t==='match')it.items=q.items;
@@ -1780,6 +1781,7 @@ function packOf(q){
   else if(q.t==='match')Object.assign(out,{statements:q.items.map(strip),choices:q.opts.map(strip),matches:q.c.map(k=>strip(q.opts[k]))});
   else Object.assign(out,{options:q.opts.map(strip),correct:q.c.map(k=>strip(q.opts[k]))});
   out.explanation=q.eraw!=null?q.eraw:html2md(q.e);
+  if(q.k)out.point=q.k;
   return out;
 }
 function packQuestion(q,label,problems){
@@ -1796,7 +1798,7 @@ function packQuestion(q,label,problems){
     if(k<0&&x.length>3)k=list.findIndex(o=>o.toLowerCase().startsWith(x.toLowerCase().slice(0,25))||x.toLowerCase().startsWith(o.toLowerCase().slice(0,25)));
     return k>=0&&k<list.length?k:-1;};
   let ty=String(q.type||'').toLowerCase();
-  const base={d:div,o:obj?div+' '+obj:div,title,s,e};
+  const base={d:div,o:obj?div+' '+obj:div,title,s,e}; if(str(q.point))base.k=str(q.point).slice(0,120);
   if(/num|fill|calc/.test(ty)||(q.answer!=null&&!arr(q.options||q.opts||q.choices).length&&!arr(q.statements).length)){
     const v=numIn(q.answer!=null?q.answer:q.correct); if(v==null)return bad('is a fill-in question without a numeric answer');
     const dec=(String(q.answer).replace(/[$,]/g,'').split('.')[1]||'').length, tol=numIn(q.tolerance);
@@ -2756,13 +2758,14 @@ const Q_SCHEMA={type:'object',additionalProperties:false,required:['division','o
   options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'}},
   answer:{type:'number'},tolerance:{type:'number'},unit:{type:'string'},
   statements:{type:'array',items:{type:'string'}},choices:{type:'array',items:{type:'string'}},matches:{type:'array',items:{type:'string'}},
-  explanation:{type:'string'}}};
+  explanation:{type:'string'},point:{type:'string'}}};
 const FORMAT_RULES='Question formats (use the field names exactly):\n'+
   '- "mc": 4 options, exactly one correct; "correct" repeats the right option text.\n'+
   '- "cata" (check all that apply): 5–6 options, 2 or more correct; the question says how many to check.\n'+
   '- "num" (fill in the number): no options; "answer" is the number, "unit" its unit ("" if none), "tolerance" the accepted difference for rounding; the question says what to round to.\n'+
   '- "match" (drag and drop): 3–6 "statements" and 3–6 "choices"; "matches" gives the right choice text for each statement, in order (a choice may be used more than once).\n'+
-  'Every question: a short "title" naming the concept; a realistic scenario in the current NCARB style (a building, a client, a constraint) rather than a bare definition; an "explanation" that gives the rule that decides it, why each trap is wrong ("- A → …" lines for options), the working for calculations, and a "Reference:" line when you know the source.';
+  'Every question: a short "title" naming the concept; a realistic scenario in the current NCARB style (a building, a client, a constraint) rather than a bare definition; an "explanation" that gives the rule that decides it, why each trap is wrong ("- A → …" lines for options), the working for calculations, and a "Reference:" line when you know the source.\n'+
+  '"point": the single fact, rule or formula the question hinges on, in a few words (e.g. "break-even rate = overhead rate + 1"). If existing points are listed, reuse one exactly only when knowing it would answer this question too; otherwise write a new one.';
 const PACK_SCHEMA={type:'object',additionalProperties:false,required:['title','points','cards','questions'],properties:{
   title:{type:'string'},
   points:{type:'array',items:{type:'object',additionalProperties:false,required:['division','objective','text'],properties:{division:{type:'string'},objective:{type:'string'},text:{type:'string'}}}},
@@ -2908,7 +2911,9 @@ function learnLoop(host,it,o){
 }
 /* other bank questions on the same objective, not yet answered right, least recently seen first */
 function bankSimilar(it,seen){
-  return ITEMS.filter(q=>q.o===it.o&&!seen.includes(q.id)&&q.id!==it.id&&!(S.ans[q.id]&&S.ans[q.id].ok)).sort((a,b)=>((S.ans[a.id]||{}).at||0)-((S.ans[b.id]||{}).at||0));
+  // a question on the same point first, then others on the objective
+  const same=q=>it.k&&q.k===it.k?0:1;
+  return ITEMS.filter(q=>q.o===it.o&&!seen.includes(q.id)&&q.id!==it.id&&!(S.ans[q.id]&&S.ans[q.id].ok)).sort((a,b)=>same(a)-same(b)||((S.ans[a.id]||{}).at||0)-((S.ans[b.id]||{}).at||0));
 }
 const FORMAT_CYCLE=['mc','cata','num','match'];
 async function similarQuestion(it,round,seen,signal){
@@ -2923,7 +2928,8 @@ async function similarQuestion(it,round,seen,signal){
   const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:8000,schema:Q_SCHEMA,signal});
   const probs=[], p=packQuestion(Object.assign({},j,{division:it.d,objective:it.o}),'The similar question',probs);
   if(!p)throw Object.assign(new Error((probs[0]||'The similar question came back incomplete')+' Try again.'),{ai:true});
-  const id=newUid(); customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),src:it.id,gen:'similar'}));
+  // written to test the same point as the one missed, so it carries that point
+  const id=newUid(); customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),src:it.id,gen:'similar'},it.k?{k:it.k}:{}));
   return ITEM(id);
 }
 
@@ -3526,18 +3532,15 @@ function objMiss(d){
   const o={}; drillPool(d).forEach(q=>{const a=S.ans[q.id];if(!a)return;const x=o[q.o]=o[q.o]||{n:0,miss:0};x.n++;if(!a.ok)x.miss++;});
   Object.values(o).forEach(x=>{x.rate=x.n?x.miss/x.n:0;}); return o;
 }
-/* Same concept: a question and the similar ones written from it (learning loop, src link), or questions whose wording
-   overlaps a lot (counted double inside one objective). Used to keep them apart and to ease off concepts you know. */
-const DRILL_SPACE=6;   // look this many questions back for the same concept
-const SIM_STOP=new Set('which what that this with from have will would should their there they been were when where about into than then them these those your following under each other more most only also does used uses using best first after before such being because based given shown below above according statement statements correct apply check three four'.split(' '));
-const SIM_WORDS=new Map();
-function simWords(q){let w=SIM_WORDS.get(q.id);if(!w){w=new Set((strip(String(q.s).replace(/<details[\s\S]*?<\/details>/g,' ')).toLowerCase().match(/[a-z][a-z0-9-]{3,}/g)||[]).filter(x=>!SIM_STOP.has(x)));SIM_WORDS.set(q.id,w);}return w;}
+/* Same point: two questions test the same thing only when they carry the same point label (k; every bank question
+   has one, and newly written questions get one), or one was written from the other (learning loop, src link).
+   Wording alone never counts, so similar-looking questions that test different things stay separate. */
+const DRILL_SPACE=6;   // look this many questions back for the same point
 function simRoot(q){const C=(S.custom&&S.custom.items)||{};let id=q.id,k=0;while(C[id]&&C[id].src&&k++<5)id=C[id].src;return id;}
+function pointOf(q){if(q.k)return q.k;const r=ITEM(simRoot(q));return r&&r.k||'';}
 function sameConcept(a,b){
   if(a.id===b.id||simRoot(a)===simRoot(b))return true;
-  const A=simWords(a),B=simWords(b); if(!A.size||!B.size)return false;
-  let n=0;A.forEach(x=>{if(B.has(x))n++;}); const j=n/(A.size+B.size-n);
-  return (a.o===b.o?2*j:j)>=0.35;
+  const ka=pointOf(a); return !!ka&&a.d===b.d&&ka===pointOf(b);
 }
 const rightRun=a=>a&&a.ok?(a.rs||1):0;   // answers saved before the count existed count as once
 /* Learned = last answer right, and no mistake review due. Learned questions leave the regular rotation: they come back
@@ -3599,9 +3602,11 @@ async function drillWrite(d){
   const o=drillTargetObj(d); if(!o)return [];
   const ex=styleExamples(o,d).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
   const have=ITEMS.filter(q=>q.o===o).slice(-12).map(q=>'- '+strip(q.s).slice(0,140)).join('\n');
+  const pts=[...new Set(ITEMS.filter(q=>q.o===o).map(pointOf).filter(Boolean))];
   const prompt='Write 3 new ARE '+d+' practice questions on objective '+o+' ('+objTitle(o)+'), each in a different format where it fits. Leave "points" and "cards" empty. Use division "'+d+'" and objective "'+o.split(' ')[1]+'".\n'+
     FORMAT_RULES+'\nUse "num" only for real calculations.\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+
-    (have?'\nDon\'t repeat these existing questions on this objective:\n'+have:'')+'\nTitle: "'+o+' · endless practice".';
+    (have?'\nDon\'t repeat these existing questions on this objective:\n'+have:'')+
+    (pts.length?'\nExisting points on this objective (for "point"; prefer points not yet covered):\n- '+pts.join('\n- '):'')+'\nTitle: "'+o+' · endless practice".';
   const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:16000,schema:PACK_SCHEMA,signal:DR&&DR.ctl.signal});
   const probs=[], out=[];
   (j.questions||[]).forEach((x,k)=>{const p=packQuestion(Object.assign({},x,{division:d,objective:x.objective&&/\d+\.\d+/.test(x.objective)?d+' '+(String(x.objective).match(/\d+\.\d+/)[0]):o}),'New question '+(k+1),probs);

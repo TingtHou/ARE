@@ -43,7 +43,9 @@ list.forEach((q, i) => {
     const key = s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
     const at = q.id ? old.findIndex(o => o.id === q.id) : -1; if (q.id && at < 0) throw new Error(q.id + ' is not in the bank');
     if (at < 0 && have.has(key)) throw new Error('already in the bank');
-    const it = { id: at >= 0 ? q.id : 'q' + next, d, o: d + ' ' + num, t: q.type, s };
+    const it = { id: at >= 0 ? q.id : 'q' + next, d, o: d + ' ' + num };
+    if (q.point) it.k = String(q.point).trim();   // the point it tests; questions sharing it count as the same in Endless practice
+    Object.assign(it, { t: q.type, s });
     if (q.type === 'num') { if (typeof q.answer !== 'number') throw new Error('num needs a numeric answer'); Object.assign(it, { ans: q.answer, tol: q.tolerance || 0, unit: q.unit || '' }); }
     else if (q.type === 'match') { const c = q.matches.map(w => pick(q.choices, w)); if (q.statements.length < 2 || c.length !== q.statements.length || c.some(k => k < 0)) throw new Error('match needs one known choice per statement'); Object.assign(it, { items: q.statements, opts: q.choices, c }); }
     else { const c = [...new Set(q.correct.map(w => pick(q.options, w)))]; if (q.options.length < 2 || !c.length || c.some(k => k < 0)) throw new Error('options/correct do not line up'); if (q.type === 'mc' && c.length !== 1) throw new Error('mc needs exactly one correct option'); if (q.type === 'cata' && c.length < 2) throw new Error('cata needs 2+ correct options'); Object.assign(it, { opts: q.options, c }); }

@@ -27,18 +27,15 @@ function objMiss(d){
   const o={}; drillPool(d).forEach(q=>{const a=S.ans[q.id];if(!a)return;const x=o[q.o]=o[q.o]||{n:0,miss:0};x.n++;if(!a.ok)x.miss++;});
   Object.values(o).forEach(x=>{x.rate=x.n?x.miss/x.n:0;}); return o;
 }
-/* Same concept: a question and the similar ones written from it (learning loop, src link), or questions whose wording
-   overlaps a lot (counted double inside one objective). Used to keep them apart and to ease off concepts you know. */
-const DRILL_SPACE=6;   // look this many questions back for the same concept
-const SIM_STOP=new Set('which what that this with from have will would should their there they been were when where about into than then them these those your following under each other more most only also does used uses using best first after before such being because based given shown below above according statement statements correct apply check three four'.split(' '));
-const SIM_WORDS=new Map();
-function simWords(q){let w=SIM_WORDS.get(q.id);if(!w){w=new Set((strip(String(q.s).replace(/<details[\s\S]*?<\/details>/g,' ')).toLowerCase().match(/[a-z][a-z0-9-]{3,}/g)||[]).filter(x=>!SIM_STOP.has(x)));SIM_WORDS.set(q.id,w);}return w;}
+/* Same point: two questions test the same thing only when they carry the same point label (k; every bank question
+   has one, and newly written questions get one), or one was written from the other (learning loop, src link).
+   Wording alone never counts, so similar-looking questions that test different things stay separate. */
+const DRILL_SPACE=6;   // look this many questions back for the same point
 function simRoot(q){const C=(S.custom&&S.custom.items)||{};let id=q.id,k=0;while(C[id]&&C[id].src&&k++<5)id=C[id].src;return id;}
+function pointOf(q){if(q.k)return q.k;const r=ITEM(simRoot(q));return r&&r.k||'';}
 function sameConcept(a,b){
   if(a.id===b.id||simRoot(a)===simRoot(b))return true;
-  const A=simWords(a),B=simWords(b); if(!A.size||!B.size)return false;
-  let n=0;A.forEach(x=>{if(B.has(x))n++;}); const j=n/(A.size+B.size-n);
-  return (a.o===b.o?2*j:j)>=0.35;
+  const ka=pointOf(a); return !!ka&&a.d===b.d&&ka===pointOf(b);
 }
 const rightRun=a=>a&&a.ok?(a.rs||1):0;   // answers saved before the count existed count as once
 /* Learned = last answer right, and no mistake review due. Learned questions leave the regular rotation: they come back
@@ -100,9 +97,11 @@ async function drillWrite(d){
   const o=drillTargetObj(d); if(!o)return [];
   const ex=styleExamples(o,d).map(q=>JSON.stringify(Object.assign({division:q.d,objective:q.o.split(' ')[1]||''},packOf(q)))).join('\n');
   const have=ITEMS.filter(q=>q.o===o).slice(-12).map(q=>'- '+strip(q.s).slice(0,140)).join('\n');
+  const pts=[...new Set(ITEMS.filter(q=>q.o===o).map(pointOf).filter(Boolean))];
   const prompt='Write 3 new ARE '+d+' practice questions on objective '+o+' ('+objTitle(o)+'), each in a different format where it fits. Leave "points" and "cards" empty. Use division "'+d+'" and objective "'+o.split(' ')[1]+'".\n'+
     FORMAT_RULES+'\nUse "num" only for real calculations.\nMatch the style, depth and tone of these example questions from the student\'s bank (don\'t copy them):\n'+(ex||'(none)')+
-    (have?'\nDon\'t repeat these existing questions on this objective:\n'+have:'')+'\nTitle: "'+o+' · endless practice".';
+    (have?'\nDon\'t repeat these existing questions on this objective:\n'+have:'')+
+    (pts.length?'\nExisting points on this objective (for "point"; prefer points not yet covered):\n- '+pts.join('\n- '):'')+'\nTitle: "'+o+' · endless practice".';
   const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:16000,schema:PACK_SCHEMA,signal:DR&&DR.ctl.signal});
   const probs=[], out=[];
   (j.questions||[]).forEach((x,k)=>{const p=packQuestion(Object.assign({},x,{division:d,objective:x.objective&&/\d+\.\d+/.test(x.objective)?d+' '+(String(x.objective).match(/\d+\.\d+/)[0]):o}),'New question '+(k+1),probs);

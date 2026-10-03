@@ -424,7 +424,7 @@ const FORMAT_RULES = 'Formats: "mc" = 4 options, exactly one correct. "cata" = c
   '"num" = fill in the number: no options; answer (number), unit ("" if none), tolerance (accepted difference for rounding); the question says what to round to. ' +
   '"match" = drag and drop: 3–6 statements and 3–6 choices; matches gives the right choice for each statement, in order (a choice may repeat). ' +
   'Every question: a short title naming the concept; a realistic scenario in the current NCARB style rather than a bare definition; an explanation with the rule that decides it, why each trap is wrong ("- A → …" lines), the working for calculations, and a "Reference:" line when you know the source. ' +
-  'Write the same concept in more than one format where it fits; use "num" only for real calculations. Before writing, call question_examples and follow its style without copying.';
+  'Give each question a point: the single fact, rule or formula it hinges on (questions sharing a point count as the same in the student’s Endless practice). Write the same concept in more than one format where it fits; use "num" only for real calculations. Before writing, call question_examples and follow its style without copying.';
 function packOfItem(q) {
   const title = (String(q.s).match(/<p class="qtitle">([\s\S]*?)<\/p>/) || [])[1];
   const out = { type: q.t, title: title ? strip(title) : '', question: strip(String(q.s).replace(/<p class="qtitle">[\s\S]*?<\/p>/, '')) };
@@ -439,6 +439,7 @@ function itemFromInput(i) {
   const pick = (list, w) => { const x = str(w); let k = list.findIndex(o => o.toLowerCase() === x.toLowerCase()); if (k < 0 && /^[A-Za-z]$/.test(x)) k = x.toUpperCase().charCodeAt(0) - 65; if (k < 0 && x.length > 3) k = list.findIndex(o => o.toLowerCase().startsWith(x.toLowerCase().slice(0, 25))); return k >= 0 && k < list.length ? k : -1; };
   const title = str(i.title), stem = str(i.question); if (!stem) throw new Error('question is empty.');
   const base = { d: ob.d, o: ob.full, s: (title ? '<p class="qtitle">' + esc(title) + '</p>' : '') + md2html(stem), e: md2html(str(i.explanation)), sraw: stem, eraw: str(i.explanation), at: Date.now() };
+  if (str(i.point)) base.k = str(i.point).slice(0, 120);   // the point it tests
   const ty = String(i.type || 'mc');
   if (ty === 'num') { const v = numIn(i.answer); if (v == null) throw new Error('A "num" question needs a numeric answer.'); const dec = (String(i.answer).split('.')[1] || '').length; return Object.assign(base, { t: 'num', ans: v, tol: numIn(i.tolerance) != null ? Math.abs(numIn(i.tolerance)) : +(0.5 * Math.pow(10, -dec)).toPrecision(3), unit: str(i.unit).slice(0, 30) }); }
   if (ty === 'match') { const items = arr(i.statements), opts = arr(i.choices), c = arr(i.matches).map(w => pick(opts, w)); if (items.length < 2 || opts.length < 2 || c.length !== items.length || c.some(k => k < 0)) throw new Error('A "match" question needs 2+ statements, 2+ choices and one right choice (from choices) per statement.'); return Object.assign(base, { t: 'match', items, opts, c }); }
@@ -451,7 +452,7 @@ const Q_INPUT = { type: 'object', additionalProperties: false, required: ['objec
   options: { type: 'array', items: { type: 'string' } }, correct: { type: 'array', items: { type: 'string' }, description: 'Text or letters of the correct options (mc, cata)' },
   answer: { type: 'number' }, tolerance: { type: 'number' }, unit: { type: 'string' },
   statements: { type: 'array', items: { type: 'string' } }, choices: { type: 'array', items: { type: 'string' } }, matches: { type: 'array', items: { type: 'string' }, description: 'The right choice for each statement, in order (match)' },
-  explanation: { type: 'string' } } };
+  explanation: { type: 'string' }, point: { type: 'string', description: 'The single fact, rule or formula it hinges on, in a few words. Reuse an existing point (question_examples lists them) only if knowing it answers this question too.' } } };
 
 /* ---------- the tools ---------- */
 const TOOLS = [
@@ -533,7 +534,7 @@ const TOOLS = [
     inputSchema: OBJ({ objective: { type: 'string', description: 'e.g. "PDD 1.5", or a division like "PPD"' } }, ['objective']),
     run: (X, i) => { const ob = objIn(i.objective); if (!ob.d) throw new Error('objective must start with PA, PPD, PDD, PcM or PjM.');
       const pool = X.items.filter(q => !q.mine && (ob.ob ? q.o === ob.full : q.d === ob.d)), more = X.items.filter(q => !q.mine && q.d === ob.d);
-      const out = []; ['mc', 'cata', 'num', 'match'].forEach(ty => { const q = pool.find(x => x.t === ty) || more.find(x => x.t === ty); if (q) out.push(Object.assign({ question_id: q.id, objective: q.o }, packOfItem(q))); });
+      const out = []; ['mc', 'cata', 'num', 'match'].forEach(ty => { const q = pool.find(x => x.t === ty) || more.find(x => x.t === ty); if (q) out.push(Object.assign({ question_id: q.id, objective: q.o, point: q.k || '' }, packOfItem(q))); });
       return out.length ? out : 'No example questions for that division yet.'; } },
   { name: 'list_objectives', title: 'List objectives', annotations: RO, description: 'Every NCARB objective of a division (PA, PPD or PDD), grouped by exam section, with how many bank questions and how many of the student’s own questions each has. Use it to cover a whole division.',
     inputSchema: OBJ({ division: { type: 'string', enum: DIVS } }, ['division']),

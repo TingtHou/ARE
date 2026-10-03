@@ -331,13 +331,14 @@ const Q_SCHEMA={type:'object',additionalProperties:false,required:['division','o
   options:{type:'array',items:{type:'string'}},correct:{type:'array',items:{type:'string'}},
   answer:{type:'number'},tolerance:{type:'number'},unit:{type:'string'},
   statements:{type:'array',items:{type:'string'}},choices:{type:'array',items:{type:'string'}},matches:{type:'array',items:{type:'string'}},
-  explanation:{type:'string'}}};
+  explanation:{type:'string'},point:{type:'string'}}};
 const FORMAT_RULES='Question formats (use the field names exactly):\n'+
   '- "mc": 4 options, exactly one correct; "correct" repeats the right option text.\n'+
   '- "cata" (check all that apply): 5–6 options, 2 or more correct; the question says how many to check.\n'+
   '- "num" (fill in the number): no options; "answer" is the number, "unit" its unit ("" if none), "tolerance" the accepted difference for rounding; the question says what to round to.\n'+
   '- "match" (drag and drop): 3–6 "statements" and 3–6 "choices"; "matches" gives the right choice text for each statement, in order (a choice may be used more than once).\n'+
-  'Every question: a short "title" naming the concept; a realistic scenario in the current NCARB style (a building, a client, a constraint) rather than a bare definition; an "explanation" that gives the rule that decides it, why each trap is wrong ("- A → …" lines for options), the working for calculations, and a "Reference:" line when you know the source.';
+  'Every question: a short "title" naming the concept; a realistic scenario in the current NCARB style (a building, a client, a constraint) rather than a bare definition; an "explanation" that gives the rule that decides it, why each trap is wrong ("- A → …" lines for options), the working for calculations, and a "Reference:" line when you know the source.\n'+
+  '"point": the single fact, rule or formula the question hinges on, in a few words (e.g. "break-even rate = overhead rate + 1"). If existing points are listed, reuse one exactly only when knowing it would answer this question too; otherwise write a new one.';
 const PACK_SCHEMA={type:'object',additionalProperties:false,required:['title','points','cards','questions'],properties:{
   title:{type:'string'},
   points:{type:'array',items:{type:'object',additionalProperties:false,required:['division','objective','text'],properties:{division:{type:'string'},objective:{type:'string'},text:{type:'string'}}}},
@@ -483,7 +484,9 @@ function learnLoop(host,it,o){
 }
 /* other bank questions on the same objective, not yet answered right, least recently seen first */
 function bankSimilar(it,seen){
-  return ITEMS.filter(q=>q.o===it.o&&!seen.includes(q.id)&&q.id!==it.id&&!(S.ans[q.id]&&S.ans[q.id].ok)).sort((a,b)=>((S.ans[a.id]||{}).at||0)-((S.ans[b.id]||{}).at||0));
+  // a question on the same point first, then others on the objective
+  const same=q=>it.k&&q.k===it.k?0:1;
+  return ITEMS.filter(q=>q.o===it.o&&!seen.includes(q.id)&&q.id!==it.id&&!(S.ans[q.id]&&S.ans[q.id].ok)).sort((a,b)=>same(a)-same(b)||((S.ans[a.id]||{}).at||0)-((S.ans[b.id]||{}).at||0));
 }
 const FORMAT_CYCLE=['mc','cata','num','match'];
 async function similarQuestion(it,round,seen,signal){
@@ -498,7 +501,8 @@ async function similarQuestion(it,round,seen,signal){
   const j=await aiJson({system:AI_SYS,messages:[{role:'user',content:prompt}],effort:'medium',maxTokens:8000,schema:Q_SCHEMA,signal});
   const probs=[], p=packQuestion(Object.assign({},j,{division:it.d,objective:it.o}),'The similar question',probs);
   if(!p)throw Object.assign(new Error((probs[0]||'The similar question came back incomplete')+' Try again.'),{ai:true});
-  const id=newUid(); customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),src:it.id,gen:'similar'}));
+  // written to test the same point as the one missed, so it carries that point
+  const id=newUid(); customSet('items',id,Object.assign(itemFromPack(p),{at:Date.now(),src:it.id,gen:'similar'},it.k?{k:it.k}:{}));
   return ITEM(id);
 }
 
