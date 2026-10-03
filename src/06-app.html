@@ -129,7 +129,11 @@ function html2md(h){
   d.childNodes.forEach(n=>{
     if(n.nodeType===3){if(n.textContent.trim())out.push(n.textContent.trim());return;}
     if(n.nodeType!==1)return;
+    const tb=n.tagName==='TABLE'?n:$('table',n);
     if(n.tagName==='UL'||n.tagName==='OL')out.push($$('li',n).map((li,i)=>(n.tagName==='UL'?'- ':(i+1)+'. ')+inl(li).trim()).join('\n'));
+    else if(n.tagName==='FIGURE'){const im=$('img',n);if(im)out.push('![' +(im.getAttribute('alt')||'Figure')+']('+im.getAttribute('src')+')');}
+    else if(tb){const rows=$$('tr',tb).map(r=>'| '+$$('th,td',r).map(c=>inl(c).trim().replace(/\|/g,'/')).join(' | ')+' |');
+      if(rows.length)out.push((n.tagName==='DETAILS'?'Figure as text:\n':'')+[rows[0],rows[0].replace(/[^|]+/g,'---')].concat(rows.slice(1)).join('\n'));}
     else out.push(inl(n).trim());
   });
   return out.join('\n\n');

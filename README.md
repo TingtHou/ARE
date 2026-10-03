@@ -16,7 +16,7 @@ Progress is saved in each browser. With accounts switched on (see `aws/SETUP.md`
 
 ## Divisions
 
-The site covers all five ARE 5.0 divisions: **PA**, **PPD**, **PDD**, **PcM** (Practice Management) and **PjM** (Project Management). PcM and PjM have their own notes pages plus a **Contracts (AIA)** page, objectives in the Objective map, flashcard decks, exam dates on Today (change them there) and plan weeks 15–22. PcM has 63 practice questions and PjM has 32 (two per objective); make more with **Generate → All of PcM / All of PjM**, or let Endless practice write them as you go. To add your own written questions: `node tools/add-questions.js <questions.json>`. To re-import: `node tools/import-deck.js <deck data folder>` for the deck, and `node tools/import-quizzes.js <file> --divisions PCM --keep PA,PPD,PDD` for PcM questions.
+The site covers all five ARE 5.0 divisions: **PA**, **PPD**, **PDD**, **PcM** (Practice Management) and **PjM** (Project Management). PcM and PjM have their own notes pages plus a **Contracts (AIA)** page, objectives in the Objective map, flashcard decks, exam dates on Today (change them there) and plan weeks 15–22. PcM has 77 practice questions (with the original figures and tables) and PjM has 32 (two per objective); make more with **Generate → All of PcM / All of PjM**, or let Endless practice write them as you go. To add your own written questions: `node tools/add-questions.js <questions.json>`. To re-import: `node tools/import-deck.js <deck data folder>` for the deck, and `node tools/add-questions.js <questions.json>` for questions (an `id` already in the bank replaces that question in place; `![alt](img/…png)` lines add figures from `material/img/`).
 
 ## Endless practice
 
