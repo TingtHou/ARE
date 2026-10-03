@@ -3549,6 +3549,14 @@ const rightRun=a=>a&&a.ok?(a.rs||1):0;   // answers saved before the count exist
    in a row: 2 days, then 7, 21, 60. Miss a check and the question is back in rotation and in Mistakes. */
 const CHECK_DAYS=[2,2,7,21,60], DRILL_CHECK_EVERY=5;
 function learned(q,now){const a=S.ans[q.id],m=S.mist[q.id];return !!(a&&a.ok)&&!(m&&!m.fixed&&m.due<=now);}
+/* Covered: you got another question on the same point right, after your last answer to this one. It leaves the
+   rotation like a learned question (a mistake review that is due still comes back). */
+function coveredBy(q,now){
+  const m=S.mist[q.id]; if(m&&!m.fixed&&m.due<=now)return null;
+  const a=S.ans[q.id];
+  return drillPool(q.d).find(p=>{const b=S.ans[p.id];return p.id!==q.id&&b&&b.ok&&(!a||b.at>a.at)&&sameConcept(q,p);})||null;
+}
+const drillDone=(q,now)=>learned(q,now)||!!coveredBy(q,now);
 const checkDue=q=>{const a=S.ans[q.id];return a.at+CHECK_DAYS[Math.min(rightRun(a),4)]*DAY;};
 /* a memory check: the most overdue learned question that isn't close to what was just shown; early: even if none is due yet */
 function drillCheckPick(d,now,early){
@@ -3575,7 +3583,7 @@ function drillCtx(d){
 }
 /* the regular rotation: questions not answered yet, or missed last time (null when all of them were just shown) */
 function drillPick(d){
-  const now=Date.now(), om=objMiss(d), pool=drillPool(d).filter(q=>!learned(q,now)), ctx=drillCtx(d);
+  const now=Date.now(), om=objMiss(d), pool=drillPool(d).filter(q=>!drillDone(q,now)), ctx=drillCtx(d);
   const keep=Math.min(DRILL_RECENT,Math.max(2,pool.length-3));
   const recent=new Set(DR.recent.slice(-keep));
   const cand=pool.filter(q=>!recent.has(q.id)); if(!cand.length)return null;
@@ -3623,7 +3631,7 @@ function initDrill(opts){
     '<div class="drillpick">'+DIVS.map(d=>{const pool=drillPool(d), om=objMiss(d), h=hist[d], run=drillRun(d);
       const weak=Object.entries(om).filter(([,x])=>x.miss).sort((a,b)=>b[1].rate*b[1].miss-a[1].rate*a[1].miss).slice(0,3).map(([o])=>o);
       return '<button type="button" class="drillcard" data-dstart="'+d+'"><span class="pill '+d.toLowerCase()+'">'+d+'</span><b>'+esc((EXAMS.find(e=>e.d===d)||{n:d}).n)+'</b>'+
-        '<span class="small">'+pool.length+' questions · '+pool.filter(q=>learned(q,Date.now())).length+' learned'+(run?' · <b>continue</b>: '+run.n+' answered'+(run.n?', '+Math.round(run.ok/run.n*100)+'%':''):h?' · last time '+(h.lastAnswered?Math.round(h.lastCorrect/h.lastAnswered*100)+'% of '+h.lastAnswered:'—'):'')+'</span>'+
+        '<span class="small">'+pool.length+' questions · '+pool.filter(q=>drillDone(q,Date.now())).length+' learned'+(run?' · <b>continue</b>: '+run.n+' answered'+(run.n?', '+Math.round(run.ok/run.n*100)+'%':''):h?' · last time '+(h.lastAnswered?Math.round(h.lastCorrect/h.lastAnswered*100)+'% of '+h.lastAnswered:'—'):'')+'</span>'+
         (weak.length?'<span class="small dvweak">Weak: '+weak.join(', ')+'</span>':'')+'</button>';}).join('')+'</div>'+
     (ai?'<label class="pass" style="margin:12px 0"><input type="checkbox" id="drAi" checked> Mix in new questions written by '+AI_NAME()+' (about 1 in '+DRILL_NEW_EVERY+', aimed at your weak objectives; they are saved to My material)</label>'
        :'<p class="small" style="margin:12px 0">Connect ChatGPT on this site (or use the claude.ai link) to mix in newly written questions. <a href="#aihelp">AI setup</a></p>');
@@ -3654,7 +3662,7 @@ function paintDrillBar(){
   const acc=DR.n?Math.round(DR.ok/DR.n*100)+'%':'—';
   h.innerHTML='<span class="pill '+DR.d.toLowerCase()+'">'+DR.d+'</span><span><b>'+DR.n+'</b> answered</span><span><b>'+DR.ok+'</b> right</span><span><b>'+acc+'</b></span><span>streak <b>'+DR.streak+'</b></span>'+
     (DR.cur&&DR.cur.gen==='drill'?'<span class="chip c-ok">new</span>':'')+(DR.curCheck?'<span class="chip">memory check</span>':'')+
-    (()=>{const now=Date.now(),p=drillPool(DR.d),l=p.filter(q=>learned(q,now)).length;return '<span class="small" title="Questions you have got right leave the rotation and come back only as memory checks">'+(p.length-l)+' to go · '+l+' learned</span>';})()+(DR.writing?'<span class="small">writing new questions…</span>':DR.aiNote?'<span class="small" title="'+esc(DR.aiNote)+'">bank questions only for now</span>':'')+
+    (()=>{const now=Date.now(),p=drillPool(DR.d),l=p.filter(q=>drillDone(q,now)).length;return '<span class="small" title="Questions you have got right, and others on the same point, leave the rotation; answered ones come back only as memory checks">'+(p.length-l)+' to go · '+l+' learned</span>';})()+(DR.writing?'<span class="small">writing new questions…</span>':DR.aiNote?'<span class="small" title="'+esc(DR.aiNote)+'">bank questions only for now</span>':'')+
     '<span class="drbtns"><button type="button" class="btn sm" data-dr="menu" title="Your place is kept">Divisions</button><button type="button" class="btn sm" data-dr="finish" title="See how it went; your place is kept">Stop</button></span>';
 }
 function drillNext(){
@@ -3673,7 +3681,7 @@ function drillNext(){
   // nothing left in rotation: a waiting new question, then a due check, then an early check
   if(!it&&DR.fresh.length){it=DR.fresh.shift();DR.sinceNew=0;}
   if(!it){it=drillCheckPick(DR.d,now)||drillCheckPick(DR.d,now,true);check=!!it;}
-  if(!it)it=drillPool(DR.d).find(q=>!learned(q,now))||null;   // only just-shown questions remain
+  if(!it)it=drillPool(DR.d).find(q=>!drillDone(q,now))||null;   // only just-shown questions remain
   if(!it){$('#drQ').innerHTML='<div class="panel empty">There are no '+DR.d+' questions yet. Add some on My material, or connect ChatGPT to have them written.</div>';return;}
   DR.sinceCheck=check?0:DR.sinceCheck+1;
   DR.recent.push(it.id); if(DR.recent.length>40)DR.recent.shift();
